@@ -10,12 +10,14 @@ on:
       - 'tests/**'
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - name: Checkout THUMP
         uses: actions/checkout@v4
       - name: Run DSP consistency checks
         run: python tests/validate_dsp.py
+      - name: Validate EQ curve-family maths
+        run: python tests/test_eq_curves.py
       - name: Configure VS2022 x64 + JUCE 8
         run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
       - name: Build VST3 Release
