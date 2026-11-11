@@ -22,12 +22,13 @@ static void setRBJ (Biquad& f, float hz, float q, double fs, int kind, float gai
     f.b0 = B0/A0; f.b1 = B1/A0; f.b2 = B2/A0;
     f.a1 = A1/A0; f.a2 = A2/A0;
 }
-// Broad 1084-family LOW shelf approximation, not a claimed transfer-function
-// match to an unmeasured hardware module. The three user-fixed frequencies
-// (40 / 120 / 220 Hz) are independent adaptations of the original shelf type.
-// Q-control 1.00 = stock model; lower = broader, higher = steeper / slight resonant bend.
-// The standard audio EQ cookbook's shelf-S parameter is used here rather than
-// incorrectly mapping the 1084 low section onto three parametric peaking bells.
+// Neve 1073 / 1084 LOW shelf family: the primary response uses an RBJ shelf
+// with a deliberately broad transition. The separate mild inverse bump in
+// Band::lowDivot reconstructs the known small opposite-sign response above the
+// shelf corner (UAD / GroupDIY 1073 circuit measurements). This is a documented
+// shape approximation, NOT a calibration to a particular physical unit.
+// Panel frequencies 40 / 120 / 220 Hz are user-selected adaptations of the
+// originals 35 / 60 / 110 / 220 Hz; stock Q trim remains 1.00.
 void Biquad::lowShelf (float hz, float qControl, float gainDb, double fs) noexcept
 {
     if (std::abs (gainDb) < 0.00001f)
@@ -40,7 +41,7 @@ void Biquad::lowShelf (float hz, float qControl, float gainDb, double fs) noexce
     const float A = std::pow (10.f, gainDb / 40.f);
     // qControl is relative to the panel's stock (1.00) position.
     const float shelfSlope = juce::jlimit (.26f, 1.45f,
-                                           .72f * std::pow (qControl, .62f));
+                                           .78f * std::pow (qControl, .62f));
     const float alpha = .5f * sine * std::sqrt (juce::jmax (0.0001f,
                         (A + 1.f/A)*(1.f/shelfSlope - 1.f) + 2.f));
     const float beta = 2.f * std::sqrt (A) * alpha;
@@ -54,13 +55,22 @@ void Biquad::lowShelf (float hz, float qControl, float gainDb, double fs) noexce
     a1=ab1/a0; a2=ab2/a0;
 }
 
-// API 550-style proportional-Q peaking family. Width changes AUTOMATICALLY with
-// absolute boost/cut, on top of the user's Q trim (1.00 = default stock family).
-// The curve-family control points are APPROXIMATIONS, not imported measurements.
+// API 550/550A/550B proportional-Q family. The real 550 (not the 550A-1)
+// gets appreciably narrower when gain grows. Interpolate at the original
+// stepped amounts for a smooth +-12dB slider; 1.00 = stock model Q multiplier.
+// Approximate response-matched control points, not digitized factory measurements.
 float proportionalQ (float gainDb, float qControl) noexcept
 {
-    const float amount = juce::jlimit (0.f, 1.f, std::abs (gainDb)/12.f);
-    const float stockQ = .46f + 1.14f * std::pow (amount, .78f);
+    static constexpr float g[] = { 0.f, 2.f, 4.f, 6.f, 9.f, 12.f };
+    static constexpr float q[] = { .39f, .48f, .66f, .88f, 1.20f, 1.55f };
+    const float absGain = juce::jlimit (0.f, 12.f, std::abs (gainDb));
+    float stockQ = q[5];
+    for (int i=1; i<6; ++i)
+        if (absGain <= g[i])
+        {
+            stockQ = juce::jmap (absGain, g[i-1], g[i], q[i-1], q[i]);
+            break;
+        }
     return juce::jlimit (.15f, 4.8f, stockQ * qControl);
 }
 
@@ -72,6 +82,7 @@ void Band::reset() noexcept
     for (auto& f : lp) f.reset();
     for (auto& f : hp) f.reset();
     for (auto& f : eq) f.reset();
+    for (auto& f : lowDivot) f.reset();
     tubePreHP.reset(); tubePostLP.reset(); lowSatDC.reset();
 
 }
@@ -94,21 +105,21 @@ const std::array<Preset, 8>& factoryPresets()
 {
     static const std::array<Preset, 8> presets = {{
         { "Modern Metal Lock", "Tight, steady subs and enough mid grit to survive a guitar wall.",
-          { 0.0f, 0.0f, 290.0f, 1.0f, 1.0f, 3.2f, 0.17f, 0.0f, 0.7f, 2.0f, 0.85f, -3.0f, 1.0f, 1.0f, 1.0f, -25.0f, 0.2f, 220.0f, 2.5f, 0.95f, 1.0f, 4.5f, 0.46f, 3.0f, 0.95f, 1.0f, 1.0f, 1.0f, 0.0f, -22.0f, 0.1f, 85.0f, 1.0f, 0.78f, 1.0f, 1.0f, -1.0f, 75.0f, 1.0f } },
+          { 0f, 0f, 290f, 1f, 1f, 3.2f, 0.17f, 0f, 0.7f, 2f, 0.85f, -3f, 1f, 1f, 1f, -25f, 0.2f, 220f, 2.5f, 0.95f, 1f, 4.5f, 0.46f, 3f, 0.95f, 1f, 1f, 1f, 0f, -22f, 0.1f, 85f, 1f, 0.78f, 1f, 3.5f, -1f, 75f, 1f } },
         { "Classic Rock Body", "Broad 120 Hz warmth with articulate but restrained 1.5 kHz.",
-          { 0.0f, 0.0f, 370.0f, 1.0f, 1.0f, 2.3f, 0.12f, 1.0f, 0.55f, 2.5f, 0.7f, -1.5f, 0.8f, 1.0f, 2.0f, -22.0f, 0.45f, 320.0f, 2.0f, 0.95f, 1.0f, 2.6f, 0.22f, 1.5f, 0.8f, -0.5f, 0.9f, 1.0f, 1.0f, -18.0f, 0.28f, 155.0f, 1.0f, 0.67f, 1.0f, 0.5f, -0.8f, 110.0f, 0.9f } },
+          { 0f, 0f, 370f, 1f, 1f, 2.3f, 0.12f, 1f, 0.55f, 2.5f, 0.7f, -1.5f, 0.8f, 1f, 2f, -22f, 0.45f, 320f, 2f, 0.95f, 1f, 2.6f, 0.22f, 1.5f, 0.8f, -0.5f, 0.9f, 1f, 1f, -18f, 0.28f, 155f, 1f, 0.67f, 1f, 4f, -0.8f, 110f, 0.9f } },
         { "Punk Pick Attack", "Prominent string click and 1.5 kHz edge, with tight lows.",
-          { 0.0f, 0.0f, 280.0f, 1.0f, 1.0f, 2.8f, 0.13f, -1.0f, 0.8f, 1.5f, 0.9f, -2.5f, 1.1f, 1.0f, 0.0f, -24.0f, 0.1f, 180.0f, 2.0f, 0.9f, 1.0f, 5.8f, 0.58f, 5.0f, 0.95f, 3.0f, 1.1f, 1.0f, 0.0f, -20.0f, 0.08f, 65.0f, 1.0f, 0.9f, 1.0f, 1.0f, -1.0f, 55.0f, 1.0f } },
+          { 0f, 0f, 280f, 1f, 1f, 2.8f, 0.13f, -1f, 0.8f, 1.5f, 0.9f, -2.5f, 1.1f, 1f, 0f, -24f, 0.1f, 180f, 2f, 0.9f, 1f, 5.8f, 0.58f, 5f, 0.95f, 3f, 1.1f, 1f, 0f, -20f, 0.08f, 65f, 1f, 0.9f, 1f, 6f, -1f, 55f, 1f } },
         { "Drop Tuned Grind", "Preserve sub notes while moving distortion into the upper harmonics.",
-          { 0.0f, 0.0f, 210.0f, 1.0f, 1.0f, 3.3f, 0.18f, 1.0f, 0.75f, 2.0f, 0.8f, -4.0f, 1.1f, 1.0f, 1.0f, -27.0f, 0.25f, 380.0f, 3.0f, 0.98f, 1.0f, 6.5f, 0.55f, 4.0f, 1.1f, 1.5f, 1.3f, 1.0f, 1.0f, -25.0f, 0.2f, 130.0f, 1.5f, 0.78f, 1.0f, 1.0f, -1.2f, 90.0f, 1.0f } },
+          { 0f, 0f, 210f, 1f, 1f, 3.3f, 0.18f, 1f, 0.75f, 2f, 0.8f, -4f, 1.1f, 1f, 1f, -27f, 0.25f, 380f, 3f, 0.98f, 1f, 6.5f, 0.55f, 4f, 1.1f, 1.5f, 1.3f, 1f, 1f, -25f, 0.2f, 130f, 1.5f, 0.78f, 1f, 6f, -1.2f, 90f, 1f } },
         { "CLA-Inspired Bite", "Inspired by CLA's 1176-controlled bass, top-end EQ and distortion choices.",
-          { 0.0f, 0.0f, 330.0f, 1.0f, 1.0f, 2.5f, 0.18f, 0.0f, 0.7f, 1.5f, 0.8f, -2.0f, 0.95f, 1.0f, 0.0f, -28.0f, 0.08f, 175.0f, 3.0f, 0.95f, 1.0f, 5.4f, 0.48f, 4.5f, 0.9f, 3.0f, 1.2f, 1.0f, 0.0f, -21.0f, 0.07f, 90.0f, 1.5f, 0.88f, 1.0f, 1.2f, -1.0f, 80.0f, 1.0f } },
+          { 0f, 0f, 330f, 1f, 1f, 2.5f, 0.18f, 0f, 0.7f, 1.5f, 0.8f, -2f, 0.95f, 1f, 0f, -28f, 0.08f, 175f, 3f, 0.95f, 1f, 5.4f, 0.48f, 4.5f, 0.9f, 3f, 1.2f, 1f, 0f, -21f, 0.07f, 90f, 1.5f, 0.88f, 1f, 3.5f, -1f, 80f, 1f } },
         { "Scheps-Inspired Parallel", "Retain natural fundamentals; blend in grit and limited compression.",
-          { 0.0f, 0.0f, 340.0f, 1.0f, 1.0f, 2.4f, 0.09f, 0.0f, 0.65f, 1.0f, 0.75f, -1.0f, 0.9f, 0.0f, 2.0f, -20.0f, 0.45f, 280.0f, 0.0f, 0.98f, 1.0f, 4.5f, 0.39f, 5.0f, 0.9f, 0.0f, 1.1f, 0.0f, 1.0f, -20.0f, 0.32f, 145.0f, 0.0f, 0.82f, 1.0f, 0.5f, -1.2f, 110.0f, 0.48f } },
+          { 0f, 0f, 340f, 1f, 1f, 2.4f, 0.09f, 0f, 0.65f, 1f, 0.75f, -1f, 0.9f, 0f, 2f, -20f, 0.45f, 280f, 0f, 0.98f, 1f, 4.5f, 0.39f, 5f, 0.9f, 0f, 1.1f, 0f, 1f, -20f, 0.32f, 145f, 0f, 0.82f, 1f, 4f, -1.2f, 110f, 0.48f } },
         { "TLA-Inspired Crush", "Aggressive dense compression informed by TLA's heavy bass-control philosophy.",
-          { 0.0f, 0.0f, 310.0f, 1.0f, 1.0f, 3.2f, 0.22f, 0.0f, 0.8f, 1.5f, 0.75f, -3.0f, 1.1f, 1.0f, 0.0f, -34.0f, 0.05f, 190.0f, 5.0f, 0.98f, 1.0f, 5.0f, 0.44f, 3.5f, 1.1f, 2.5f, 1.2f, 1.0f, 0.0f, -30.0f, 0.06f, 65.0f, 3.0f, 0.85f, 1.0f, 1.2f, -1.2f, 65.0f, 1.0f } },
+          { 0f, 0f, 310f, 1f, 1f, 3.2f, 0.22f, 0f, 0.8f, 1.5f, 0.75f, -3f, 1.1f, 1f, 0f, -34f, 0.05f, 190f, 5f, 0.98f, 1f, 5f, 0.44f, 3.5f, 1.1f, 2.5f, 1.2f, 1f, 0f, -30f, 0.06f, 65f, 3f, 0.85f, 1f, 6f, -1.2f, 65f, 1f } },
         { "Staub-Inspired Edge", "A dense modern-rock balance: firm lows, bright articulation and restrained limiting.",
-          { 0.0f, 0.0f, 320.0f, 1.0f, 1.0f, 3.0f, 0.16f, -0.5f, 0.8f, 2.0f, 0.75f, -2.5f, 1.1f, 1.0f, 1.0f, -27.0f, 0.22f, 240.0f, 3.0f, 0.96f, 1.0f, 5.0f, 0.44f, 3.5f, 1.1f, 2.0f, 1.15f, 1.0f, 0.0f, -24.0f, 0.13f, 105.0f, 2.0f, 0.83f, 1.0f, 0.8f, -1.0f, 85.0f, 0.95f } }
+          { 0f, 0f, 320f, 1f, 1f, 3f, 0.16f, -0.5f, 0.8f, 2f, 0.75f, -2.5f, 1.1f, 1f, 1f, -27f, 0.22f, 240f, 3f, 0.96f, 1f, 5f, 0.44f, 3.5f, 1.1f, 2f, 1.15f, 1f, 0f, -24f, 0.13f, 105f, 2f, 0.83f, 1f, 5f, -1f, 85f, 0.95f } }
     }};
     return presets;
 }
@@ -151,7 +162,7 @@ static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     fl ("highMakeup", "High Makeup", -12, 18, .1f, 1);
     fl ("highMix", "High Blend", 0, 1, .001f, .72f);
     bl ("limiterOn", "Final Limiter", true);
-    fl ("limiterInput", "Limiter Drive", -12, 18, .1f, 0);
+    fl ("limiterInput", "Limiter Drive", -12, 18, .1f, 4.0f);
     fl ("limiterCeiling", "Limiter Ceiling", -12, 0, .1f, -1);
     fl ("limiterRelease", "Limiter Release ms", 40, 300, 1, 90);
     fl ("limiterMix", "Limiter Mix", 0, 1, .001f, 1);
@@ -187,7 +198,7 @@ void ThumpAudioProcessor::prepareToPlay (double fs, int maxBlock)
     lookaheadOS = juce::jmax (1, (int) std::ceil (fs * .001)) * 2;
     delayL.assign ((size_t) lookaheadOS, 0.0f);
     delayR.assign ((size_t) lookaheadOS, 0.0f);
-    delayIndex = 0; detectorPeak = 0;
+    delayIndex = 0; detectorPeak = 0; glueGrDb = 0; limiterBlend = 1.f;
     setLatencySamples (juce::roundToInt (oversampling.getLatencyInSamples()) + lookaheadOS / 2);
     updateFilters (readParams());
 }
@@ -229,8 +240,17 @@ void ThumpAudioProcessor::updateFilters (const thump::State& s) noexcept
         for (auto& f : b.lp) f.lowPass (s.crossover, qButter, processingSampleRate);
         for (auto& f : b.hp) f.highPass (s.crossover, qButter, processingSampleRate);
         for (int i=0; i<3; ++i)
-            b.eq[i].lowShelf (i==0 ? 40.f : i==1 ? 120.f : 220.f,
-                              s.eqLowQ[i], s.eqLowGain[i], processingSampleRate);
+        {
+            const float hz = i==0 ? 40.f : i==1 ? 120.f : 220.f;
+            b.eq[i].lowShelf (hz, s.eqLowQ[i], s.eqLowGain[i], processingSampleRate);
+            // Original 1073/1084 shelves show a shallow inverse-response
+            // 'divot' above the bend. The reference material documents the
+            // behavior, but does not give an exact gain/frequency grid.
+            const float inverseDb = -s.eqLowGain[i] * .080f;
+            b.lowDivot[i].bell (hz * 2.05f,
+                                juce::jlimit (.38f, 1.9f, .70f * std::sqrt (s.eqLowQ[i])),
+                                inverseDb, processingSampleRate);
+        }
         b.tubePreHP.highPass (720, qButter, processingSampleRate);
         b.tubePostLP.lowPass (5200, qButter, processingSampleRate);
         b.lowSatDC.highPass (18, qButter, processingSampleRate);
@@ -239,12 +259,19 @@ void ThumpAudioProcessor::updateFilters (const thump::State& s) noexcept
 
 float ThumpAudioProcessor::runLowSat (float x, int channel, const thump::State& s) noexcept
 {
-    const float d = .9f + s.lowDrive * .54f;
-    const float shaped = std::tanh (d*x + .20f*d*x*x) / d;
-    // Saturation residual only is AC-coupled, removing asymmetry-induced DC.
-    // The dry low signal does not pass through the DC blocker, keeping bypass coherent.
-    const float residual = bands[(size_t)channel].lowSatDC.run ((shaped-x)*1.8f);
-    return x + (s.lowSatOn ? s.lowSatMix : 0.0f) * residual;
+    // This parallel asymmetric triode/tape-like shaper retains the dry bass
+    // fundamental while generating considerably stronger K2/K3 harmonics.
+    // Previous implementation was too weak at normal -18dBFS bass levels.
+    const float d = 2.45f + 1.55f*s.lowDrive; // 4..18: substantive nonlinearity
+    const float bias = .10f + .012f*s.lowDrive;
+    const float offset = std::tanh (bias);
+    const float linearGain = d*(1.f-offset*offset);
+    const float shaped = (std::tanh (d*x + bias)-offset)/linearGain;
+    // AC-couple only the difference; wet/dry timing of the fundamental stays
+    // aligned and the 18 Hz blocker prevents an asymmetry-driven DC offset.
+    const float residual = bands[(size_t)channel].lowSatDC.run (shaped-x);
+    const float wet = s.lowSatOn ? juce::jlimit (0.f, 1.f, 1.85f*s.lowSatMix) : 0.f;
+    return x + wet * residual;
 }
 float ThumpAudioProcessor::runHighSat (float x, int channel, const thump::State& s) noexcept
 {
@@ -403,7 +430,8 @@ void ThumpAudioProcessor::processBlock (juce::AudioBuffer<float>& audio, juce::M
             lo[ch] = b.lp[1].run (b.lp[0].run (in[ch]));
             hi[ch] = b.hp[1].run (b.hp[0].run (in[ch]));
             // LR4 low and high have matching phase at crossover and sum to unity MAGNITUDE.
-            lo[ch] = b.eq[2].run (b.eq[1].run (b.eq[0].run (lo[ch])));
+            for (int k=0; k<3; ++k)
+                lo[ch] = b.lowDivot[k].run (b.eq[k].run (lo[ch]));
             hi[ch] = highEq[(size_t)ch][1].run (highEq[(size_t)ch][0].run (hi[ch]));
             lo[ch] = runLowSat (lo[ch],ch,s);
             hi[ch] = runHighSat (hi[ch],ch,s);
@@ -417,24 +445,47 @@ void ThumpAudioProcessor::processBlock (juce::AudioBuffer<float>& audio, juce::M
     }
     const float ceiling = thump::dbToGain (s.limiterCeilingDb);
     const float limiterIn = thump::dbToGain (s.limiterInputDb);
-    const float release = std::exp (-1000.f/(s.limiterReleaseMs*(float)processingSampleRate));
-    float maxLimiterReduction = 0;
+    const float fsOS = (float) processingSampleRate;
+    const float release = std::exp (-1000.f/(s.limiterReleaseMs*fsOS));
+    const float glueAttack = std::exp (-1000.f/(2.0f*fsOS));
+    const float glueRelease = std::exp (-1000.f/(juce::jmax (s.limiterReleaseMs,65.f)*fsOS));
+    const float bypassSlew = 1.f - std::exp (-1000.f/(8.f*fsOS));
+    float maxLimiterReduction = 0.f;
     for (int i=0; i<count; ++i)
     {
         const float a = left[i] * (s.limiterOn ? limiterIn : 1.f);
         const float b = right[i] * (s.limiterOn ? limiterIn : 1.f);
         const float p = juce::jmax (std::abs(a), std::abs(b));
-        detectorPeak = juce::jmax (p, detectorPeak*release);
-        const float gain = s.limiterOn ? juce::jmin (1.f, ceiling / juce::jmax (detectorPeak,1.0e-9f)) : 1.f;
-        const float blended = 1.f - (s.limiterOn ? s.limiterMix : 0.f) * (1.f-gain);
-        maxLimiterReduction = juce::jmax (maxLimiterReduction, -thump::gainToDb (gain));
+        // Audible but restrained 1.4:1 program-dependent leveling BEFORE the
+        // final peak catcher. Above a ceiling-relative -9 dB threshold, it
+        // progressively 'locks' the combined bass while retaining transients.
+        const float overGlueDb = thump::gainToDb (p) - (s.limiterCeilingDb-9.f);
+        const float targetGlueDb = s.limiterOn
+            ? juce::jlimit (0.f, 4.5f, juce::jmax (0.f, overGlueDb)*.2857f)
+            : 0.f;
+        const float c = targetGlueDb > glueGrDb ? glueAttack : glueRelease;
+        glueGrDb = c * glueGrDb + (1.f-c) * targetGlueDb;
+        const float glueGain = thump::dbToGain (-glueGrDb);
+        // 1ms lookahead: detector examines the undelayed stream, while gain
+        // is applied to the appropriately delayed stream. Shared stereo
+        // envelope preserves center image. Peak catcher is fast/clean.
+        detectorPeak = juce::jmax (p*glueGain, detectorPeak*release);
+        const float limiterGain = s.limiterOn
+            ? juce::jmin (1.f, ceiling / juce::jmax (detectorPeak, 1.e-9f))
+            : 1.f;
+        const float totalGain = glueGain * limiterGain;
+        const float targetBlend = s.limiterOn ? s.limiterMix : 0.f;
+        limiterBlend += bypassSlew * (targetBlend - limiterBlend);
+        const float appliedGain = 1.f - limiterBlend * (1.f-totalGain);
         const size_t index = (size_t) delayIndex;
         const float delayedA = delayL[index], delayedB = delayR[index];
         delayL[index] = a; delayR[index] = b;
         delayIndex = (delayIndex+1) % (int)delayL.size();
-        left[i] = delayedA * blended;
-        right[i] = delayedB * blended;
-        if (s.mono) left[i] = right[i] = 0.5f*(left[i]+right[i]);
+        left[i] = delayedA * appliedGain;
+        right[i] = delayedB * appliedGain;
+        maxLimiterReduction = juce::jmax (maxLimiterReduction,
+            -thump::gainToDb (juce::jmax (appliedGain,1.0e-7f)));
+        if (s.mono) left[i] = right[i] = .5f*(left[i]+right[i]);
     }
     oversampling.processSamplesDown (work);
     const float post = thump::dbToGain (s.outputDb);

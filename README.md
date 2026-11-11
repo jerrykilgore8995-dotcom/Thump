@@ -1,3 +1,22 @@
+# THUMP v0.4 — EQ response-family update / low drive / stronger limiter
+
+Revision of the v0.3 JUCE 8 bass plugin. 40/120/220 Hz low EQ now features a subtle frequency-dependent inverse-response notch above each Neve-family shelf bend; 1.5/5 kHz EQ uses a gain-stepped API 550 proportional-Q interpolation. These are documented **approximations**, not hardware-identical curves: no calibrated 35/60/110/220 and API 550 multi-gain numerical transfer measurements are available in the source data. Both Q trims 1.0 select the stock THUMP model.
+
+Low saturation now uses a significantly stronger, bias-asymmetric parallel waveshaper, with an AC-coupled distortion residual; limiter includes restrained 1.4:1 glue leveling before its stereo-linked 1 ms lookahead peak limiter. The factory presets now drive the limiter at +3.5–6 dB. Every preexisting DAW parameter ID remains unchanged.
+
+## Verification
+
+`python tests/validate_dsp.py && python tests/test_eq_curves.py && python tests/test_drive_and_gui.py && python tests/test_thump_v04.py`
+
+The Python tests confirm the **implemented DSP mathematics**, not a real-world hardware spectral match, mastering-grade true-peak ceiling, or measured THD from compiled JUCE. The plugin is still 2x oversampled and intended for 44.1 kHz bass.
+
+## References
+
+- Neve 1073 / 1084 official EQ controls, 35/60/110/220 Hz shelves: https://www.ams-neve.com/outboard/classic-range/1084-2/
+- GroupDIY low-shelf circuit response discussions: https://groupdiy.com/threads/nyan-1073-eq-x-formerly-cheaps73-poor-mans-1073.70096/
+- API 550 EQ revision/Q notes from Paul Wolff and John Klett: https://manuals.plus/m/5964517af52e90ca3f4166e72a99bf32dc455891c7038af06e3452a93379c047
+- API 550A curve proportions: https://ms-tas.com/api-550-equalizers/
+
 # THUMP v0.3.0 — Analog-style dual-band bass processor
 
 **JUCE 8 / VST3 & Standalone / C++17**. Gold-and-black, scalable, real JUCE vector faceplate — not a static PNG. Includes eight original bass preset starting points and one-click Windows x64 Actions packaging.

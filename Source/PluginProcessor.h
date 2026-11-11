@@ -32,7 +32,7 @@ struct Biquad
 
 struct Band
 {
-    Biquad lp[2], hp[2], eq[3], tubePreHP, tubePostLP, lowSatDC;
+    Biquad lp[2], hp[2], eq[3], lowDivot[3], tubePreHP, tubePostLP, lowSatDC;
 
     void reset() noexcept;
 };
@@ -59,7 +59,7 @@ struct State
     int lowMode = 1, highMode = 1; // 0 FET, 1 VCA, 2 OPTO
     float lowThresh = -24, lowAttackMs = 0.2f, lowReleaseMs = 250, lowMakeupDb = 2;
     float highThresh = -22, highAttackMs = 0.2f, highReleaseMs = 180, highMakeupDb = 1;
-    float limiterInputDb = 0, limiterCeilingDb = -1.0f, limiterReleaseMs = 90, limiterMix = 1;
+    float limiterInputDb = 4, limiterCeilingDb = -1.0f, limiterReleaseMs = 90, limiterMix = 1;
 };
 
 // Original eight factory presets, not recalls of anyone else's session settings.
@@ -117,7 +117,7 @@ private:
     std::array<std::array<thump::Biquad, 2>, 2> highEq;
     std::vector<float> delayL, delayR;
     int delayIndex = 0, lookaheadOS = 1;
-    float detectorPeak = 0;
+    float detectorPeak = 0, glueGrDb = 0, limiterBlend = 1.f;
     double processingSampleRate = 88200;
     std::atomic<int> selectedPreset {-1};
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ThumpAudioProcessor)

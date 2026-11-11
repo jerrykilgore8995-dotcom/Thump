@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Standalone coefficient math tests for THUMP v0.2.1's EQ curve family.
+"""Standalone coefficient math tests for THUMP v0.4's EQ curve family.
 
 These inspect the implemented RBJ equations and approximate proportional-Q law,
 not measured Neve/API hardware. Regression tests are not JUCE build tests.
@@ -20,7 +20,7 @@ def shelf(freq, gain, user_q, fs):
     w = 2 * math.pi * max(5, min(fs * .475, freq)) / fs
     c, sine = math.cos(w), math.sin(w)
     A = 10**(gain / 40)
-    slope = max(.26, min(1.45, .72 * user_q**.62))
+    slope = max(.26, min(1.45, .78 * user_q**.62))
     alpha = .5 * sine * math.sqrt(max(.0001, (A + 1/A) * (1/slope - 1) + 2))
     beta = 2 * math.sqrt(A) * alpha
     a0 = (A+1) + (A-1)*c + beta
@@ -43,7 +43,13 @@ def db(c, freq, fs):
 
 
 def pq(gain, q):
-    return max(.15, min(4.8, (.46 + 1.14*(min(abs(gain)/12,1)**.78))*q))
+    steps=((0,.39),(2,.48),(4,.66),(6,.88),(9,1.20),(12,1.55))
+    g=min(12.,abs(gain))
+    for i in range(1,len(steps)):
+        if g<=steps[i][0]:
+            a,b=steps[i-1],steps[i]
+            return max(.15,min(4.8,(a[1]+(b[1]-a[1])*(g-a[0])/(b[0]-a[0]))*q))
+    return max(.15,min(4.8,steps[-1][1]*q))
 
 
 def bell(freq, gain, q, fs):
@@ -60,7 +66,7 @@ def main():
     assert 'void Biquad::lowShelf' in SOURCE and 'void lowShelf' in HEADER
     assert 'thump::proportionalQ' in SOURCE
     assert 'b.eq[i].lowShelf' in SOURCE
-    assert 'lowShelf (i==0 ? 40.f : i==1 ? 120.f : 220.f' in SOURCE
+    assert 'b.eq[i].lowShelf (hz,' in SOURCE and 'b.lowDivot[i].bell' in SOURCE
     assert 'float qControl' in SOURCE
     assert 'setDoubleClickReturnValue (true, 1.0)' in EDITOR
 
