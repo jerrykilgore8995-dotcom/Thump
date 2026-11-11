@@ -105,21 +105,21 @@ const std::array<Preset, 8>& factoryPresets()
 {
     static const std::array<Preset, 8> presets = {{
         { "Modern Metal Lock", "Tight, steady subs and enough mid grit to survive a guitar wall.",
-          { 0f, 0f, 290f, 1f, 1f, 3.2f, 0.17f, 0f, 0.7f, 2f, 0.85f, -3f, 1f, 1f, 1f, -25f, 0.2f, 220f, 2.5f, 0.95f, 1f, 4.5f, 0.46f, 3f, 0.95f, 1f, 1f, 1f, 0f, -22f, 0.1f, 85f, 1f, 0.78f, 1f, 3.5f, -1f, 75f, 1f } },
+          { 0.0f, 0.0f, 290.0f, 1.0f, 1.0f, 3.2f, 0.17f, 0.0f, 0.7f, 2.0f, 0.85f, -3.0f, 1.0f, 1.0f, 1.0f, -25.0f, 0.2f, 220.0f, 2.5f, 0.95f, 1.0f, 4.5f, 0.46f, 3.0f, 0.95f, 1.0f, 1.0f, 1.0f, 0.0f, -22.0f, 0.1f, 85.0f, 1.0f, 0.78f, 1.0f, 3.5f, -1.0f, 75.0f, 1.0f } },
         { "Classic Rock Body", "Broad 120 Hz warmth with articulate but restrained 1.5 kHz.",
-          { 0f, 0f, 370f, 1f, 1f, 2.3f, 0.12f, 1f, 0.55f, 2.5f, 0.7f, -1.5f, 0.8f, 1f, 2f, -22f, 0.45f, 320f, 2f, 0.95f, 1f, 2.6f, 0.22f, 1.5f, 0.8f, -0.5f, 0.9f, 1f, 1f, -18f, 0.28f, 155f, 1f, 0.67f, 1f, 4f, -0.8f, 110f, 0.9f } },
+          { 0.0f, 0.0f, 370.0f, 1.0f, 1.0f, 2.3f, 0.12f, 1.0f, 0.55f, 2.5f, 0.7f, -1.5f, 0.8f, 1.0f, 2.0f, -22.0f, 0.45f, 320.0f, 2.0f, 0.95f, 1.0f, 2.6f, 0.22f, 1.5f, 0.8f, -0.5f, 0.9f, 1.0f, 1.0f, -18.0f, 0.28f, 155.0f, 1.0f, 0.67f, 1.0f, 4.0f, -0.8f, 110.0f, 0.9f } },
         { "Punk Pick Attack", "Prominent string click and 1.5 kHz edge, with tight lows.",
-          { 0f, 0f, 280f, 1f, 1f, 2.8f, 0.13f, -1f, 0.8f, 1.5f, 0.9f, -2.5f, 1.1f, 1f, 0f, -24f, 0.1f, 180f, 2f, 0.9f, 1f, 5.8f, 0.58f, 5f, 0.95f, 3f, 1.1f, 1f, 0f, -20f, 0.08f, 65f, 1f, 0.9f, 1f, 6f, -1f, 55f, 1f } },
+          { 0.0f, 0.0f, 280.0f, 1.0f, 1.0f, 2.8f, 0.13f, -1.0f, 0.8f, 1.5f, 0.9f, -2.5f, 1.1f, 1.0f, 0.0f, -24.0f, 0.1f, 180.0f, 2.0f, 0.9f, 1.0f, 5.8f, 0.58f, 5.0f, 0.95f, 3.0f, 1.1f, 1.0f, 0.0f, -20.0f, 0.08f, 65.0f, 1.0f, 0.9f, 1.0f, 6.0f, -1.0f, 55.0f, 1.0f } },
         { "Drop Tuned Grind", "Preserve sub notes while moving distortion into the upper harmonics.",
-          { 0f, 0f, 210f, 1f, 1f, 3.3f, 0.18f, 1f, 0.75f, 2f, 0.8f, -4f, 1.1f, 1f, 1f, -27f, 0.25f, 380f, 3f, 0.98f, 1f, 6.5f, 0.55f, 4f, 1.1f, 1.5f, 1.3f, 1f, 1f, -25f, 0.2f, 130f, 1.5f, 0.78f, 1f, 6f, -1.2f, 90f, 1f } },
+          { 0.0f, 0.0f, 210.0f, 1.0f, 1.0f, 3.3f, 0.18f, 1.0f, 0.75f, 2.0f, 0.8f, -4.0f, 1.1f, 1.0f, 1.0f, -27.0f, 0.25f, 380.0f, 3.0f, 0.98f, 1.0f, 6.5f, 0.55f, 4.0f, 1.1f, 1.5f, 1.3f, 1.0f, 1.0f, -25.0f, 0.2f, 130.0f, 1.5f, 0.78f, 1.0f, 6.0f, -1.2f, 90.0f, 1.0f } },
         { "CLA-Inspired Bite", "Inspired by CLA's 1176-controlled bass, top-end EQ and distortion choices.",
-          { 0f, 0f, 330f, 1f, 1f, 2.5f, 0.18f, 0f, 0.7f, 1.5f, 0.8f, -2f, 0.95f, 1f, 0f, -28f, 0.08f, 175f, 3f, 0.95f, 1f, 5.4f, 0.48f, 4.5f, 0.9f, 3f, 1.2f, 1f, 0f, -21f, 0.07f, 90f, 1.5f, 0.88f, 1f, 3.5f, -1f, 80f, 1f } },
+          { 0.0f, 0.0f, 330.0f, 1.0f, 1.0f, 2.5f, 0.18f, 0.0f, 0.7f, 1.5f, 0.8f, -2.0f, 0.95f, 1.0f, 0.0f, -28.0f, 0.08f, 175.0f, 3.0f, 0.95f, 1.0f, 5.4f, 0.48f, 4.5f, 0.9f, 3.0f, 1.2f, 1.0f, 0.0f, -21.0f, 0.07f, 90.0f, 1.5f, 0.88f, 1.0f, 3.5f, -1.0f, 80.0f, 1.0f } },
         { "Scheps-Inspired Parallel", "Retain natural fundamentals; blend in grit and limited compression.",
-          { 0f, 0f, 340f, 1f, 1f, 2.4f, 0.09f, 0f, 0.65f, 1f, 0.75f, -1f, 0.9f, 0f, 2f, -20f, 0.45f, 280f, 0f, 0.98f, 1f, 4.5f, 0.39f, 5f, 0.9f, 0f, 1.1f, 0f, 1f, -20f, 0.32f, 145f, 0f, 0.82f, 1f, 4f, -1.2f, 110f, 0.48f } },
+          { 0.0f, 0.0f, 340.0f, 1.0f, 1.0f, 2.4f, 0.09f, 0.0f, 0.65f, 1.0f, 0.75f, -1.0f, 0.9f, 0.0f, 2.0f, -20.0f, 0.45f, 280.0f, 0.0f, 0.98f, 1.0f, 4.5f, 0.39f, 5.0f, 0.9f, 0.0f, 1.1f, 0.0f, 1.0f, -20.0f, 0.32f, 145.0f, 0.0f, 0.82f, 1.0f, 4.0f, -1.2f, 110.0f, 0.48f } },
         { "TLA-Inspired Crush", "Aggressive dense compression informed by TLA's heavy bass-control philosophy.",
-          { 0f, 0f, 310f, 1f, 1f, 3.2f, 0.22f, 0f, 0.8f, 1.5f, 0.75f, -3f, 1.1f, 1f, 0f, -34f, 0.05f, 190f, 5f, 0.98f, 1f, 5f, 0.44f, 3.5f, 1.1f, 2.5f, 1.2f, 1f, 0f, -30f, 0.06f, 65f, 3f, 0.85f, 1f, 6f, -1.2f, 65f, 1f } },
+          { 0.0f, 0.0f, 310.0f, 1.0f, 1.0f, 3.2f, 0.22f, 0.0f, 0.8f, 1.5f, 0.75f, -3.0f, 1.1f, 1.0f, 0.0f, -34.0f, 0.05f, 190.0f, 5.0f, 0.98f, 1.0f, 5.0f, 0.44f, 3.5f, 1.1f, 2.5f, 1.2f, 1.0f, 0.0f, -30.0f, 0.06f, 65.0f, 3.0f, 0.85f, 1.0f, 6.0f, -1.2f, 65.0f, 1.0f } },
         { "Staub-Inspired Edge", "A dense modern-rock balance: firm lows, bright articulation and restrained limiting.",
-          { 0f, 0f, 320f, 1f, 1f, 3f, 0.16f, -0.5f, 0.8f, 2f, 0.75f, -2.5f, 1.1f, 1f, 1f, -27f, 0.22f, 240f, 3f, 0.96f, 1f, 5f, 0.44f, 3.5f, 1.1f, 2f, 1.15f, 1f, 0f, -24f, 0.13f, 105f, 2f, 0.83f, 1f, 5f, -1f, 85f, 0.95f } }
+          { 0.0f, 0.0f, 320.0f, 1.0f, 1.0f, 3.0f, 0.16f, -0.5f, 0.8f, 2.0f, 0.75f, -2.5f, 1.1f, 1.0f, 1.0f, -27.0f, 0.22f, 240.0f, 3.0f, 0.96f, 1.0f, 5.0f, 0.44f, 3.5f, 1.1f, 2.0f, 1.15f, 1.0f, 0.0f, -24.0f, 0.13f, 105.0f, 2.0f, 0.83f, 1.0f, 5.0f, -1.0f, 85.0f, 0.95f } }
     }};
     return presets;
 }
