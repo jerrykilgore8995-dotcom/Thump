@@ -96,7 +96,7 @@ public:
     juce::AudioProcessorValueTreeState apvts;
     void applyFactoryPreset (int index);
     int getSelectedPreset() const noexcept { return selectedPreset.load(); }
-    std::atomic<float> inMeterDb {-60}, outMeterDb {-60}, lowReduction {0}, highReduction {0}, limitReduction {0};
+    std::atomic<float> lowReduction {0}, highReduction {0}, limitReduction {0};
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();

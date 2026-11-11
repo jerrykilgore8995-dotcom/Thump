@@ -3,12 +3,12 @@
 
 namespace
 {
-const juce::Colour black  = juce::Colour::fromRGB (16,16,17);
-const juce::Colour charcoal = juce::Colour::fromRGB (29,29,30);
-const juce::Colour gold = juce::Colour::fromRGB (214,170,80);
-const juce::Colour lightGold = juce::Colour::fromRGB (251,212,120);
-const juce::Colour deepGold = juce::Colour::fromRGB (116,70,26);
-const juce::Colour amber = juce::Colour::fromRGB (255,175,55);
+const juce::Colour black  = juce::Colour::fromRGB (13,15,17);
+const juce::Colour charcoal = juce::Colour::fromRGB (31,33,35);
+const juce::Colour gold = juce::Colour::fromRGB (166,132,79);
+const juce::Colour lightGold = juce::Colour::fromRGB (211,185,130);
+const juce::Colour deepGold = juce::Colour::fromRGB (86,67,40);
+const juce::Colour amber = juce::Colour::fromRGB (225,148,63);
 }
 
 ThumpLookAndFeel::ThumpLookAndFeel()
@@ -28,32 +28,43 @@ ThumpLookAndFeel::ThumpLookAndFeel()
 void ThumpLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w, int h,
                                         float pos, float start, float end, juce::Slider&)
 {
-    const float cx = (float)x + w*.5f, cy = (float)y + h*.46f;
-    const float radius = juce::jmin ((float)w*.42f,(float)h*.38f);
-    if (radius < 3) return;
-    // Surrounding machined dial ticks, end stops and screws; every control is live JUCE.
-    for (int i=0; i<=20; ++i)
+    const float cx = x + w * .5f, cy = y + h * .45f;
+    const float r = juce::jmin (w*.355f, h*.347f);
+    if (r < 4.f) return;
+    const auto ring = juce::Rectangle<float>(cx-r*1.04f,cy-r*1.04f,2.08f*r,2.08f*r);
+    g.setColour(juce::Colours::black.withAlpha(.86f));
+    g.fillEllipse(ring.translated(0,2.f));
+    g.setColour(juce::Colour::fromRGB(77,71,61));
+    g.drawEllipse(ring,1.0f);
+    // Very fine scale marks engraved into the metal rather than cartoon tick blocks.
+    for (int i=0;i<=20;++i)
     {
-        float a = start + (end-start)*i/20.f;
-        const float dx=std::sin(a), dy=-std::cos(a);
-        g.setColour (i%5==0 ? lightGold.withAlpha(.95f) : gold.withAlpha(.55f));
-        g.drawLine (cx+dx*radius*1.15f,cy+dy*radius*1.15f,
-                    cx+dx*radius*(i%5==0 ? 1.31f : 1.24f),
-                    cy+dy*radius*(i%5==0 ? 1.31f : 1.24f), i%5==0 ? 1.8f : .8f);
+        const float a=start+(end-start)*i/20.f;
+        const float sn=std::sin(a), cs=-std::cos(a);
+        const float outer=r*1.34f, inner=r*(i%5==0?1.18f:1.23f);
+        g.setColour(i%5==0?juce::Colour::fromRGB(196,177,136):juce::Colour::fromRGB(105,103,94));
+        g.drawLine(cx+sn*inner,cy+cs*inner,cx+sn*outer,cy+cs*outer,i%5==0?1.15f:.7f);
     }
-    g.setColour (juce::Colours::black.withAlpha (.7f));
-    g.fillEllipse (cx-radius+2,cy-radius+5,2*radius+2,2*radius+2);
-    g.setGradientFill (juce::ColourGradient (juce::Colour::fromRGB(255,228,155),cx-radius,cy-radius,
-                                             juce::Colour::fromRGB(118,70,28),cx+radius,cy+radius,false));
-    g.fillEllipse (cx-radius,cy-radius,2*radius,2*radius);
-    g.setColour (lightGold); g.drawEllipse(cx-radius,cy-radius,2*radius,2*radius,1.3f);
-    g.setColour (juce::Colour::fromRGB(59,36,17));
-    g.drawEllipse(cx-radius*0.83f,cy-radius*0.83f,1.66f*radius,1.66f*radius,1.6f);
-    const float a=start + (end-start)*juce::jlimit(0.f,1.f,pos);
-    g.setColour (juce::Colours::black.withAlpha (.85f));
-    g.drawLine(cx,cy,cx+std::sin(a)*radius*.78f,cy-std::cos(a)*radius*.78f,3.7f);
-    g.setColour (juce::Colour::fromRGB(255,242,186));
-    g.drawLine(cx,cy,cx+std::sin(a)*radius*.74f,cy-std::cos(a)*radius*.74f,1.4f);
+    g.setGradientFill(juce::ColourGradient(juce::Colour::fromRGB(101,83,56),cx-r,cy-r,
+                   juce::Colour::fromRGB(25,27,27),cx+r,cy+r,false));
+    g.fillEllipse(cx-r,cy-r,2*r,2*r);
+    g.setColour(juce::Colour::fromRGB(136,111,70));
+    g.drawEllipse(cx-r,cy-r,2*r,2*r,1.5f);
+    const float ir=r*.74f;
+    g.setGradientFill(juce::ColourGradient(juce::Colour::fromRGB(183,161,115),cx-ir,cy-ir,
+                   juce::Colour::fromRGB(78,65,46),cx+ir,cy+ir,false));
+    g.fillEllipse(cx-ir,cy-ir,2*ir,2*ir);
+    // Hairline turning marks in an actual milled knob face.
+    g.setColour(juce::Colour::fromRGB(211,189,145).withAlpha(.22f));
+    g.drawEllipse(cx-ir*.9f,cy-ir*.9f,ir*1.8f,ir*1.8f,.8f);
+    g.setColour(juce::Colour::fromRGB(47,43,34));
+    g.drawEllipse(cx-ir*.93f,cy-ir*.93f,ir*1.86f,ir*1.86f,1.f);
+    const float a=start+(end-start)*juce::jlimit(0.f,1.f,pos);
+    const float sn=std::sin(a), cs=-std::cos(a);
+    g.setColour(juce::Colour::fromRGB(22,21,20));
+    g.drawLine(cx+sn*ir*.25f,cy+cs*ir*.25f,cx+sn*ir*.9f,cy+cs*ir*.9f,2.7f);
+    g.setColour(juce::Colour::fromRGB(238,224,192));
+    g.drawLine(cx+sn*ir*.45f,cy+cs*ir*.45f,cx+sn*ir*.85f,cy+cs*ir*.85f,1.35f);
 }
 
 void ThumpLookAndFeel::drawLinearSlider (juce::Graphics& g, int x,int y,int w,int h,float sliderPos,
@@ -66,30 +77,31 @@ void ThumpLookAndFeel::drawLinearSlider (juce::Graphics& g, int x,int y,int w,in
     g.drawRoundedRectangle (cx-5,y+2,10,(float)h-5,3,1);
     const float py = juce::jlimit ((float)y+5, (float)(y+h)-5, sliderPos);
     g.setColour (juce::Colours::black.withAlpha (.75f));
-    g.fillRoundedRectangle (cx-22,py-11,46,23,3);
-    g.setGradientFill (juce::ColourGradient(lightGold,cx-22,py-9,deepGold,cx+22,py+10,false));
-    g.fillRoundedRectangle (cx-21,py-10,42,20,3);
+    g.fillRoundedRectangle (cx-16,py-8,32,17,2);
+    g.setGradientFill (juce::ColourGradient(lightGold,cx-16,py-8,deepGold,cx+16,py+8,false));
+    g.fillRoundedRectangle (cx-16,py-8,32,16,2);
     g.setColour (juce::Colour::fromRGB(84,55,27));
-    g.drawLine (cx-16,py,cx+16,py,2.4f);
+    g.drawLine (cx-12,py,cx+12,py,1.5f);
     g.setColour (lightGold.withAlpha(.7f));
-    g.drawRoundedRectangle (cx-21,py-10,42,20,3,1);
+    g.drawRoundedRectangle (cx-16,py-8,32,16,2,1);
 }
 
 void ThumpLookAndFeel::drawToggleButton (juce::Graphics& g,juce::ToggleButton& button,bool over,bool down)
 {
-    const auto b = button.getLocalBounds().toFloat().reduced(2);
-    const bool on = button.getToggleState();
-    g.setColour (juce::Colours::black); g.fillRoundedRectangle(b,5);
-    g.setColour (gold); g.drawRoundedRectangle(b,5,1.2f);
-    auto inner=b.reduced(6,5);
-    g.setGradientFill(juce::ColourGradient(on?juce::Colour::fromRGB(255,220,132):juce::Colour::fromRGB(66,64,62),
-                     inner.getX(),inner.getY(),on?juce::Colour::fromRGB(152,84,20):juce::Colour::fromRGB(33,33,33),
-                     inner.getRight(),inner.getBottom(),false));
-    g.fillRoundedRectangle(inner,3);
-    g.setColour(on ? juce::Colours::black : gold);
-    g.setFont(juce::Font(juce::FontOptions(juce::jlimit(10.f,15.f,b.getHeight()*.36f),juce::Font::bold)));
+    const auto b=button.getLocalBounds().toFloat().reduced(2.f);
+    const bool on=button.getToggleState();
+    g.setColour(juce::Colour::fromRGB(5,7,8)); g.fillRoundedRectangle(b,3.f);
+    g.setColour(juce::Colour::fromRGB(90,85,72)); g.drawRoundedRectangle(b,3.f,1.f);
+    const auto inner=b.reduced(4.f);
+    g.setGradientFill(juce::ColourGradient(on?juce::Colour::fromRGB(138,114,71):juce::Colour::fromRGB(46,48,48),
+                      inner.getX(),inner.getY(),on?juce::Colour::fromRGB(77,62,37):juce::Colour::fromRGB(24,26,27),
+                      inner.getX(),inner.getBottom(),false));
+    g.fillRoundedRectangle(inner,2.f);
+    if (on) { g.setColour(amber);g.fillEllipse(inner.getX()+5,inner.getCentreY()-2.5f,5.f,5.f); }
+    g.setColour(on ? juce::Colour::fromRGB(241,223,183) : juce::Colour::fromRGB(151,151,146));
+    g.setFont(juce::Font(juce::FontOptions(juce::jlimit(10.f,13.f,b.getHeight()*.34f),juce::Font::bold)));
     g.drawFittedText(button.getButtonText(),inner.toNearestInt(),juce::Justification::centred,1);
-    if (over || down) { g.setColour(juce::Colours::white.withAlpha(.15f));g.drawRoundedRectangle(inner,3,2); }
+    if(over||down){g.setColour(juce::Colours::white.withAlpha(.07f));g.drawRoundedRectangle(inner,2.f,1.f);}
 }
 
 void ThumpLookAndFeel::drawComboBox (juce::Graphics& g,int w,int h,bool,
@@ -157,64 +169,64 @@ ThumpAudioProcessorEditor::ThumpAudioProcessorEditor (ThumpAudioProcessor& p)
 {
     setLookAndFeel (&vintage);
     setResizable(true,true);
-    setResizeLimits (1160,665,2300,1350);
-    setSize (1640,950);
+    setResizeLimits (1200,645,2000,1075);
+    setSize (1520,817); // Fits a 21-inch 1080p monitor, including the DAW window chrome.
     presetMenu.setLookAndFeel(&vintage);
     presetMenu.addItem("Init / Manual",1);
-    for (int i=0;i<8;++i) presetMenu.addItem (thump::factoryPresets()[(size_t)i].name,i+2);
-    const int selected = processor.getSelectedPreset();
-    presetMenu.setSelectedId (selected>=0 ? selected+2 : 1,juce::dontSendNotification);
-    presetMenu.onChange = [this]
-    {
-        const int selectedId = presetMenu.getSelectedId();
-        if (selectedId>=2) processor.applyFactoryPreset (selectedId-2);
-    };
-    presetMenu.setTooltip("Eight original factory chains, drawn from documented rock / metal techniques");
-    addAndMakeVisible (presetMenu);
-    positions.push_back ({&presetMenu,{334,89,450,37}});
+    for (int i=0;i<8;++i) presetMenu.addItem(thump::factoryPresets()[(size_t)i].name,i+2);
+    const int selected=processor.getSelectedPreset();
+    presetMenu.setSelectedId(selected>=0?selected+2:1,juce::dontSendNotification);
+    presetMenu.onChange=[this] { const int v=presetMenu.getSelectedId(); if (v>=2) processor.applyFactoryPreset(v-2); };
+    presetMenu.setTooltip("Rock and metal bass starting points");
+    addAndMakeVisible(presetMenu);
+    positions.push_back({&presetMenu,{1080,42,450,35}});
 
-    addKnob("input","INPUT",109,226,90);
-    addKnob("output","OUTPUT",1540,226,90);
-    addKnob("xover","CROSSOVER Hz",811,226,68);
-    addSwitch("mono","MONO",1407,201,94);
+    // GLOBAL SECTION: input/output have no wasted, decorative VU meters.
+    addKnob("input","INPUT dB",105,173,72);
+    addKnob("xover","CROSSOVER Hz",310,173,72);
+    addKnob("lowMix","LOW BLEND",555,173,72);
+    addKnob("highMix","HIGH BLEND",795,173,72);
+    addSwitch("mono","MONO / CENTER",1022,157,146);
+    addKnob("output","OUTPUT dB",1477,173,72);
 
-    addSwitch("lowSatOn","ON / OFF",77,364,96);
-    addKnob("lowDrive","DRIVE",126,482,95);
-    addKnob("lowSatMix","MIX",126,623,86);
-    addEQ("low40G","low40Q","40 Hz",247);
-    addEQ("low120G","low120Q","120 Hz",329);
-    addEQ("low220G","low220Q","220 Hz",411);
-    addSwitch("lowCompOn","COMP ON",593,342,112);
-    addMode("lowMode",503,395,148,49);
-    addKnob("lowThresh","THRESHOLD",510,499,66);
-    addKnob("lowMakeup","MAKEUP",638,499,66);
-    addKnob("lowAttack","FET ATTACK ms",514,664,63);
-    lowFetAttack = sliders.back().get();
-    addKnob("lowRelease","FET RELEASE ms",639,664,63);
-    lowFetRelease = sliders.back().get();
-    addKnob("lowMix","LOW MIX",805,470,90);
-    addKnob("highMix","HIGH MIX",805,636,90);
+    // LOW  // a spacious, independent instrument strip.
+    addSwitch("lowSatOn","SAT ON",62,294,115);
+    addKnob("lowDrive","DRIVE",119,407,75);
+    addKnob("lowSatMix","WET / DRY",119,579,70);
+    addEQ("low40G","low40Q","40 Hz",246,356);
+    addEQ("low120G","low120Q","120 Hz",320,356);
+    addEQ("low220G","low220Q","220 Hz",394,356);
+    addSwitch("lowCompOn","COMP ON",468,295,105);
+    addMode("lowMode",580,295,179,40);
+    addKnob("lowThresh","THRESHOLD",519,514,72);
+    addKnob("lowMakeup","MAKEUP",704,514,72);
+    addKnob("lowAttack","FET ATTACK",520,615,63);
+    lowFetAttack=sliders.back().get();
+    addKnob("lowRelease","FET RELEASE",704,615,63);
+    lowFetRelease=sliders.back().get();
 
-    addSwitch("highSatOn","ON / OFF",916,364,98);
-    addKnob("highDrive","DRIVE",965,483,95);
-    addKnob("highSatMix","MIX",965,623,86);
-    addEQ("high1500G","high1500Q","1.5 kHz",1144);
-    addEQ("high5000G","high5000Q","5 kHz",1237);
-    addSwitch("highCompOn","COMP ON",1490,342,107);
-    addMode("highMode",1383,395,149,49);
-    addKnob("highThresh","THRESHOLD",1385,499,66);
-    addKnob("highMakeup","MAKEUP",1535,499,66);
-    addKnob("highAttack","FET ATTACK ms",1387,664,63);
-    highFetAttack = sliders.back().get();
-    addKnob("highRelease","FET RELEASE ms",1530,664,63);
-    highFetRelease = sliders.back().get();
+    // HIGH // separate grind and high-band compression, equally sized GR meter.
+    addSwitch("highSatOn","SAT ON",850,294,115);
+    addKnob("highDrive","DISTORTION",906,407,75);
+    addKnob("highSatMix","WET / DRY",906,579,70);
+    addEQ("high1500G","high1500Q","1.5 kHz",1050,356);
+    addEQ("high5000G","high5000Q","5 kHz",1143,356);
+    addSwitch("highCompOn","COMP ON",1228,295,105);
+    addMode("highMode",1340,295,182,40);
+    addKnob("highThresh","THRESHOLD",1277,514,72);
+    addKnob("highMakeup","MAKEUP",1475,514,72);
+    addKnob("highAttack","FET ATTACK",1277,615,63);
+    highFetAttack=sliders.back().get();
+    addKnob("highRelease","FET RELEASE",1475,615,63);
+    highFetRelease=sliders.back().get();
 
-    addSwitch("limiterOn","LIMIT ON",171,814,112);
-    addKnob("limiterInput","DRIVE",408,837,82);
-    addKnob("limiterCeiling","CEILING",593,837,82);
-    addKnob("limiterRelease","RELEASE",779,837,82);
-    addKnob("limiterMix","MIX",962,837,82);
-    startTimerHz (25);
+    // Last-stage clean peak management with a large readable GR display.
+    addSwitch("limiterOn","LIMIT ON",66,755,110);
+    addKnob("limiterInput","INPUT",330,789,70);
+    addKnob("limiterCeiling","CEILING",522,789,70);
+    addKnob("limiterRelease","RELEASE",716,789,70);
+    addKnob("limiterMix","WET / DRY",906,789,70);
+    startTimerHz(25);
 }
 ThumpAudioProcessorEditor::~ThumpAudioProcessorEditor()
 {
@@ -245,7 +257,7 @@ void ThumpAudioProcessorEditor::addEQ(const char* idG,const char* idQ,const char
     ptr->setTextBoxStyle(juce::Slider::TextBoxBelow,false,64,17);
     ptr->setDoubleClickReturnValue(true,0);
     ptr->setTooltip(juce::String(label)+" +/-12 dB");
-    addAndMakeVisible(*ptr);positions.push_back({ptr,{x-28,yTop,56,173}});
+    addAndMakeVisible(*ptr);positions.push_back({ptr,{x-28,yTop,56,168}});
     sliderBindings.push_back(std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.apvts,idG,*ptr));
     sliders.push_back(std::move(slider));
     addTag(label,x-42,yTop-31,84,20,13);
@@ -255,10 +267,10 @@ void ThumpAudioProcessorEditor::addEQ(const char* idG,const char* idQ,const char
     qp->setTextBoxStyle(juce::Slider::TextBoxBelow,false,65,16);
     qp->setDoubleClickReturnValue (true, 1.0);
     qp->setTooltip (juce::String(label) + " curve width / Q trim: 1.00 = stock, <1 broadens, >1 narrows");
-    addAndMakeVisible(*qp);positions.push_back({qp,{x-26,641,52,70}});
+    addAndMakeVisible(*qp);positions.push_back({qp,{x-26,590,52,70}});
     sliderBindings.push_back(std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.apvts,idQ,*qp));
     sliders.push_back(std::move(q));
-    addTag("Q",x-15,621,30,17,12);
+    addTag("Q",x-15,572,30,17,11);
 }
 void ThumpAudioProcessorEditor::addSwitch(const char* id,const char* label,float x,float y,float w)
 {
@@ -287,7 +299,7 @@ void ThumpAudioProcessorEditor::timerCallback()
 }
 void ThumpAudioProcessorEditor::resized()
 {
-    const float sx=getWidth()/1640.f, sy=getHeight()/950.f;
+    const float sx=getWidth()/1600.f, sy=getHeight()/860.f;
     for(const auto& p:positions) p.component->setBounds (juce::Rectangle<int>(
         juce::roundToInt(p.rect.getX()*sx),juce::roundToInt(p.rect.getY()*sy),
         juce::roundToInt(p.rect.getWidth()*sx),juce::roundToInt(p.rect.getHeight()*sy)));
@@ -299,99 +311,125 @@ void ThumpAudioProcessorEditor::drawScrew(juce::Graphics& g,float x,float y)
     g.fillEllipse(x-9,y-9,18,18);
     g.setColour(black);g.drawLine(x-5,y+4,x+6,y-5,2);
 }
-void ThumpAudioProcessorEditor::drawPanel(juce::Graphics& g,juce::Rectangle<float> r,const juce::String& title,bool rim)
+void ThumpAudioProcessorEditor::drawPanel(juce::Graphics& g,juce::Rectangle<float> r,
+                                         const juce::String& title,bool rim)
 {
-    g.setColour(juce::Colours::black.withAlpha(.45f));g.fillRoundedRectangle(r.translated(3,4),12);
-    g.setGradientFill(juce::ColourGradient(juce::Colour::fromRGB(48,39,25),r.getX(),r.getY(),
-       juce::Colour::fromRGB(11,12,13),r.getRight(),r.getBottom(),false));
-    g.fillRoundedRectangle(r,12);
-    g.setColour(rim ? lightGold : gold.withAlpha(.72f));g.drawRoundedRectangle(r.reduced(2),10,2);
+    g.setColour(juce::Colour::fromRGB(4,6,7));
+    g.fillRoundedRectangle(r.translated(1.5f,2.f),5.f);
+    g.setGradientFill(juce::ColourGradient(juce::Colour::fromRGB(34,36,38),r.getX(),r.getY(),
+                        juce::Colour::fromRGB(20,22,23),r.getX(),r.getBottom(),false));
+    g.fillRoundedRectangle(r,5.f);
+    g.setColour(rim?juce::Colour::fromRGB(114,92,60):juce::Colour::fromRGB(62,61,58));
+    g.drawRoundedRectangle(r.reduced(.5f),5.f,rim?1.5f:1.f);
     if (title.isNotEmpty())
     {
-        auto cap=juce::Rectangle<float>(r.getCentreX()-juce::jmin(r.getWidth()*.42f,200.f),r.getY()-11,
-                         juce::jmin(r.getWidth()*.84f,400.f),28);
-        g.setColour(black);g.fillRoundedRectangle(cap,10);
-        g.setColour(lightGold);g.drawRoundedRectangle(cap,10,1.2f);
-        g.setFont(juce::Font(juce::FontOptions(15.f,juce::Font::bold)));
-        g.drawFittedText(title,cap.toNearestInt(),juce::Justification::centred,1);
+        g.setColour(juce::Colour::fromRGB(188,177,153));
+        g.setFont(juce::Font(juce::FontOptions(14.f,juce::Font::bold)));
+        g.drawFittedText(title,juce::Rectangle<int>((int)r.getX()+13,(int)r.getY()+9,
+                         (int)r.getWidth()-25,20),juce::Justification::centredLeft,1);
+        g.setColour(juce::Colour::fromRGB(69,67,62));
+        g.drawLine(r.getX()+13,r.getY()+34,r.getRight()-13,r.getY()+34,.8f);
     }
 }
 void ThumpAudioProcessorEditor::drawVU(juce::Graphics& g,juce::Rectangle<float> r,
-                                       const juce::String& text,float levelDb,bool reduction)
+                                      const juce::String& text,float reductionDb,bool)
 {
-    g.setColour(juce::Colours::black);g.fillRoundedRectangle(r.expanded(5),6);
-    g.setGradientFill(juce::ColourGradient(juce::Colour::fromRGB(254,223,144),r.getX(),r.getY(),
-                     juce::Colour::fromRGB(173,109,41),r.getX(),r.getBottom(),false));
-    g.fillRoundedRectangle(r,5);g.setColour(gold);g.drawRoundedRectangle(r,5,2);
-    const float start=r.getX()+18,end=r.getRight()-18;
-    for(int i=0;i<11;++i)
+    // Real moving-coil-style GR meter: one prominent display on EACH comp and limiter.
+    const auto surround=r.expanded(6.f);
+    g.setColour(juce::Colours::black);
+    g.fillRoundedRectangle(surround,4.f);
+    g.setColour(juce::Colour::fromRGB(105,86,58));
+    g.drawRoundedRectangle(surround,4.f,1.4f);
+    g.setGradientFill(juce::ColourGradient(juce::Colour::fromRGB(224,197,145),r.getX(),r.getY(),
+                       juce::Colour::fromRGB(148,124,82),r.getX(),r.getBottom(),false));
+    g.fillRoundedRectangle(r,2.5f);
+    // Damped/aged lens edge, no fake lightbulb neon or oversized graphics.
+    g.setColour(juce::Colour::fromRGB(63,50,32));
+    g.drawRoundedRectangle(r.reduced(.6f),2.5f,1.f);
+    const float x0=r.getX()+18.f, x1=r.getRight()-18.f;
+    const float scaleY=r.getY()+25.f;
+    const float vals[5] = {20.f,12.f,6.f,3.f,0.f};
+    g.setFont(juce::Font(juce::FontOptions(10.5f,juce::Font::bold)));
+    for(int i=0;i<5;++i)
     {
-        const float xx=juce::jmap((float)i,0.f,10.f,start,end);
-        g.setColour(i>8?juce::Colours::darkred:black.withAlpha(.75f));
-        g.drawLine(xx,r.getY()+19,xx,r.getY()+i%2*5+29,1);
+        const float x=juce::jmap((float)i,0.f,4.f,x0,x1);
+        g.setColour(juce::Colour::fromRGB(61,51,36));
+        g.drawLine(x,scaleY+12,x,scaleY+18,1.f);
+        g.drawText(juce::String((int)vals[i]),(int)(x-16), (int)scaleY-8,32,15,juce::Justification::centred,false);
     }
-    const float scaled = reduction?juce::jlimit(0.f,1.f,levelDb/24.f)
-                         :juce::jlimit(0.f,1.f,(levelDb+40.f)/44.f);
-    const float xx=juce::jmap(scaled,start,end);
-    g.setColour(juce::Colour::fromRGB(98,30,21));g.drawLine(r.getCentreX(),r.getBottom()-10,xx,r.getY()+28,2);
-    g.setColour(juce::Colour::fromRGB(35,24,14));
-    g.setFont(juce::Font(juce::FontOptions(15.f,juce::Font::bold)));
-    g.drawFittedText(text,juce::Rectangle<int>((int)r.getX(),(int)r.getBottom()-33,(int)r.getWidth(),25),
-                     juce::Justification::centred,1);
+    const float t=std::sqrt(juce::jlimit(0.f,1.f,reductionDb/20.f));
+    const float nx=juce::jmap(t,x1,x0);
+    const auto origin=juce::Point<float>(r.getCentreX(),r.getBottom()+14.f);
+    g.saveState();
+    g.reduceClipRegion(r.toNearestInt());
+    g.setColour(juce::Colour::fromRGB(71,31,24));
+    g.drawLine(origin.x,origin.y,nx,scaleY+18.f,1.8f);
+    g.restoreState();
+    g.setColour(juce::Colour::fromRGB(247,237,205));
+    g.setFont(juce::Font(juce::FontOptions(12.5f,juce::Font::bold)));
+    g.drawText(text,r.withTrimmedTop(r.getHeight()-25).toNearestInt(),juce::Justification::centred,false);
 }
 void ThumpAudioProcessorEditor::paint(juce::Graphics& g)
 {
-    g.fillAll(black);
-    g.addTransform(juce::AffineTransform::scale(getWidth()/1640.f,getHeight()/950.f));
-    // 19-inch machined gold-rim black faceplate.
-    g.setGradientFill(juce::ColourGradient(lightGold,0,0,deepGold,1640,950,false));
-    g.fillRoundedRectangle(7,7,1626,936,17);
-    g.setColour(black);g.fillRoundedRectangle(20,19,1600,910,12);
-    for (auto pt: {juce::Point<float>{24,24},{1616,24},{24,925},{1616,925}}) drawScrew(g,pt.x,pt.y);
-    // Header and ID: permanent engraved lettering (not an overlay image).
-    g.setColour(juce::Colour::fromRGB(52,41,27));g.fillRoundedRectangle(36,30,1568,107,13);
-    g.setColour(gold);g.drawRoundedRectangle(36,30,1568,107,13,1.4f);
-    g.setFont(juce::Font(juce::FontOptions(60.f,juce::Font::bold)));
-    g.setColour(lightGold);g.drawFittedText("T H U M P",juce::Rectangle<int>(650,37,370,60),juce::Justification::centred,1);
-    g.setFont(juce::Font(juce::FontOptions(12.f,juce::Font::bold)));
-    g.drawFittedText("ULTIMATE BASS MIXING TOOL",juce::Rectangle<int>(650,96,370,19),juce::Justification::centred,1);
-    g.drawFittedText("ANALOG-STYLE  •  DUAL BAND  •  FET / VCA / OPTO",juce::Rectangle<int>(55,48,530,24),juce::Justification::centredLeft,1);
-    g.drawFittedText("FACTORY PRESETS",juce::Rectangle<int>(178,95,154,22),juce::Justification::centredRight,1);
-
-    drawPanel(g,{34,159,1570,120},"INPUT / CROSSOVER / OUTPUT",false);
-    drawVU(g,{225,186,270,75},"INPUT",processor.inMeterDb.load());
-    drawVU(g,{1128,186,235,75},"OUTPUT",processor.outMeterDb.load());
-    g.setColour(gold.withAlpha(.75f));
-    g.drawLine(532,235,695,235,1.6f);g.drawLine(939,235,1090,235,1.6f);
-    g.drawLine(696,219,720,197,1.5f);g.drawLine(696,251,720,272,1.5f);
-    g.setFont(juce::Font(juce::FontOptions(12.f)));
-    g.drawFittedText("LOW   /   HIGH",juce::Rectangle<int>(712,171,190,20),juce::Justification::centred,1);
-
-    drawPanel(g,{31,313,678,405},"LOW — THUMP & BOOM",true);
-    drawPanel(g,{721,313,154,405},"BLEND",true);
-    drawPanel(g,{886,313,725,405},"HIGH — GRIND & DEFINITION",true);
-    drawPanel(g,{47,386,150,319},"SATURATION");
-    drawPanel(g,{200,386,242,319},"3-BAND EQ");
-    drawPanel(g,{451,386,247,319},"3-MODE SUB COMP");
-    drawPanel(g,{894,386,144,319},"TS DRIVE");
-    drawPanel(g,{1046,386,250,319},"2-BAND EQ");
-    drawPanel(g,{1304,386,299,319},"3-MODE HIGH COMP");
-    drawVU(g,{475,560,190,44},"LOW GR",processor.lowReduction.load(),true);
-    drawVU(g,{1330,560,244,44},"HIGH GR",processor.highReduction.load(),true);
-    g.setColour(gold);
-    g.setFont(juce::Font(juce::FontOptions(13.f)));
-    g.drawFittedText("FET 4:1  /  VCA 4:1  /  OPTO 3:1",juce::Rectangle<int>(463,386,244,15),juce::Justification::centred,1);
-    g.drawFittedText("FET 4:1  /  VCA 4:1  /  OPTO 3:1",juce::Rectangle<int>(1324,386,270,15),juce::Justification::centred,1);
-    g.drawFittedText("LOW",juce::Rectangle<int>(762,375,90,20),juce::Justification::centred,1);
-    g.drawFittedText("HIGH",juce::Rectangle<int>(762,544,90,20),juce::Justification::centred,1);
-    drawPanel(g,{31,750,1578,174},"TRANSPARENT LOOKAHEAD GLUE LIMITER",true);
-    drawVU(g,{1156,806,380,89},"LIMITER GAIN REDUCTION",processor.limitReduction.load(),true);
-    g.setColour(gold.withAlpha(.7f));
-    g.setFont(juce::Font(juce::FontOptions(11.f)));
-    g.drawFittedText("2x OVERSAMPLING  •  PHASE-COHERENT LR4  •  1ms LOOKAHEAD",juce::Rectangle<int>(425,901,700,17),juce::Justification::centred,1);
+    g.fillAll(juce::Colour::fromRGB(8,9,10));
+    g.addTransform(juce::AffineTransform::scale(getWidth()/1600.f,getHeight()/860.f));
+    // Realistic industrial 19-inch faceplate: anodized black aluminium and narrow brass edges.
+    g.setGradientFill(juce::ColourGradient(juce::Colour::fromRGB(105,83,52),0,0,
+                        juce::Colour::fromRGB(43,38,31),1600,860,false));
+    g.fillRoundedRectangle(5,5,1590,850,9.f);
+    g.setColour(juce::Colour::fromRGB(8,10,12));
+    g.fillRoundedRectangle(13,13,1574,834,6.f);
+    g.setGradientFill(juce::ColourGradient(juce::Colour::fromRGB(37,40,42),0,15,
+                       juce::Colour::fromRGB(20,22,24),0,844,false));
+    g.fillRoundedRectangle(17,17,1566,826,5.f);
+    // A very restrained brushed finish. No shiny cartoony borders.
+    for(int y=20;y<842;y+=3)
+    {
+        g.setColour(juce::Colours::white.withAlpha((y%9==2)?.018f:.008f));
+        g.drawHorizontalLine(y,25.f,1575.f);
+    }
+    for(auto pt:{juce::Point<float>{25,26},{1573,26},{25,835},{1573,835}}) drawScrew(g,pt.x,pt.y);
+    g.setColour(juce::Colour::fromRGB(18,20,21));g.fillRoundedRectangle(38,29,1524,65,3.f);
+    g.setColour(juce::Colour::fromRGB(98,79,54));g.drawRoundedRectangle(38,29,1524,65,3.f,1.f);
+    g.setColour(juce::Colour::fromRGB(224,192,132));
+    g.setFont(juce::Font(juce::FontOptions(43.f,juce::Font::bold)));
+    g.drawText("THUMP",juce::Rectangle<int>(61,36,264,44),juce::Justification::centredLeft);
+    g.setFont(juce::Font(juce::FontOptions(11.5f,juce::Font::bold)));
+    g.setColour(juce::Colour::fromRGB(173,166,145));
+    g.drawText("ANALOG-STYLE DUAL-BAND BASS PROCESSOR",juce::Rectangle<int>(343,52,535,17),juce::Justification::centredLeft);
+    g.drawText("PRESET",juce::Rectangle<int>(1011,52,58,18),juce::Justification::centredRight);
+    drawPanel(g,{36,114,1528,108},"");
+    drawPanel(g,{36,246,742,436},"",true);
+    drawPanel(g,{822,246,742,436},"",true);
+    // Subtle inner equipment regions that don't steal space from controls.
+    drawPanel(g,{50,283,135,386},"");
+    drawPanel(g,{197,283,239,386},"");
+    drawPanel(g,{448,283,316,386},"");
+    drawPanel(g,{838,283,135,386},"");
+    drawPanel(g,{985,283,231,386},"");
+    drawPanel(g,{1228,283,322,386},"");
+    auto minor=[&](juce::String label,juce::Rectangle<int> box)
+    {
+        g.setColour(juce::Colour::fromRGB(176,168,148));
+        g.setFont(juce::Font(juce::FontOptions(12.5f,juce::Font::bold)));
+        g.drawFittedText(label,box,juce::Justification::centred,1);
+    };
+    minor("LOW   //   SATURATION",{44,260,147,19});
+    minor("LOW EQ",{200,260,228,19});
+    minor("COMPRESSOR",{451,260,305,19});
+    minor("HIGH   //   DRIVE",{832,260,148,19});
+    minor("HIGH EQ",{986,260,227,19});
+    minor("COMPRESSOR",{1232,260,312,19});
+    drawVU(g,{477,351,258,91},"LOW  •  GR",processor.lowReduction.load(),true);
+    drawVU(g,{1258,351,267,91},"HIGH  •  GR",processor.highReduction.load(),true);
+    g.setColour(juce::Colour::fromRGB(85,75,61));
+    g.drawLine(799,255,799,674,1.f);
+    drawPanel(g,{36,707,1528,128},"",true);
+    minor("GLUE LIMITER",{51,712,151,18});
+    drawVU(g,{1184,737,338,77},"LIMITER  •  GR",processor.limitReduction.load(),true);
     for(const auto& tag:tags)
     {
-        g.setColour(lightGold);
+        g.setColour(juce::Colour::fromRGB(204,195,170));
         g.setFont(juce::Font(juce::FontOptions(tag.size,juce::Font::bold)));
         g.drawFittedText(tag.text,tag.rect.toNearestInt(),juce::Justification::centred,1);
     }

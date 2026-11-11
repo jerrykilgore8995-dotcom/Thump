@@ -248,13 +248,28 @@ float ThumpAudioProcessor::runLowSat (float x, int channel, const thump::State& 
 }
 float ThumpAudioProcessor::runHighSat (float x, int channel, const thump::State& s) noexcept
 {
-    auto& b = bands[(size_t) channel];
-    const float filtered = b.tubePreHP.run (x);
-    const float drive = 1.1f + s.highDrive * .85f;
-    // TS-style frequency-selective, anti-parallel diode soft clip approximation.
-    const float clipped = std::tanh (drive * filtered) / drive;
-    const float distortion = b.tubePostLP.run ((clipped-filtered) * 2.8f);
-    return x + (s.highSatOn ? s.highSatMix : 0.0f) * distortion;
+    auto& band=bands[(size_t)channel];
+    // Tube Screamer-inspired mid-forward drive path, NOT a circuit-exact TS808:
+    // 1) Cut excessive lows before clipping (bass fundamental remains on LOW path).
+    // 2) Gain into a soft anti-parallel-diode-like clipping knee.
+    // 3) Tone LPF around 5.2 kHz; wet blend of FULL clipped signal, NOT a small
+    //    waveshaping residual that cancels against the original dry channel.
+    // Range ~10 to 42 dB pre-drive: audible even on modest 10-40mV high-band inputs.
+    const float preEmphasis=band.tubePreHP.run(x);
+    const float driveDb=5.8f + 3.6f*s.highDrive;
+    const float drive=thump::dbToGain(driveDb);
+    const float amp=preEmphasis * drive;
+    // Twin silicon diode soft clip: rounded knee, asymmetric small even component.
+    const float d1=std::tanh(amp*1.45f + .11f)-std::tanh(.11f);
+    const float d2=std::tanh(amp*1.45f - .05f)-std::tanh(-.05f);
+    const float clipped=.58f*d1 + .42f*d2;
+    const float bandLimited=band.tubePostLP.run(clipped);
+    // Moderate compensation stops higher drive from simply becoming louder;
+    // the nonlinear harmonic density nonetheless rises sharply with drive.
+    const float outputTrim=juce::jmap(s.highDrive,1.f,10.f,.52f,.31f);
+    const float distorted=bandLimited*outputTrim;
+    const float wet=s.highSatOn ? s.highSatMix : 0.f;
+    return x*(1.f-wet) + distorted*wet;
 }
 void ThumpAudioProcessor::runCompressor (float& l, float& r, thump::Detector& d,
                                         bool enabled, int mode, float threshold,
@@ -365,16 +380,13 @@ void ThumpAudioProcessor::processBlock (juce::AudioBuffer<float>& audio, juce::M
     const auto s = readParams();
     updateFilters (s);
     const float pre = thump::dbToGain (s.inputDb);
-    float maxIn = 0;
     for (int i=0; i<n; ++i)
     {
         const float l = audio.getSample (0,i);
         const float r = nc>1 ? audio.getSample (1,i) : l;
-        maxIn = juce::jmax (maxIn, juce::jmax (std::abs(l), std::abs(r)));
         stereoWork.setSample (0,i,l*pre);
         stereoWork.setSample (1,i,r*pre);
     }
-    inMeterDb.store (thump::gainToDb (maxIn));
     juce::dsp::AudioBlock<float> source (stereoWork);
     auto work = source.getSubBlock (0, (size_t)n);
     auto up = oversampling.processSamplesUp (juce::dsp::AudioBlock<const float>(work));
@@ -426,16 +438,14 @@ void ThumpAudioProcessor::processBlock (juce::AudioBuffer<float>& audio, juce::M
     }
     oversampling.processSamplesDown (work);
     const float post = thump::dbToGain (s.outputDb);
-    float maxOut = 0;
     for (int ch=0; ch<nc; ++ch)
     {
         auto* d = audio.getWritePointer(ch);
         const auto* src = stereoWork.getReadPointer(ch);
         for (int i=0; i<n; ++i)
-        { d[i] = src[i] * post; maxOut = juce::jmax (maxOut,std::abs (d[i])); }
+        { d[i] = src[i] * post; }
     }
     for (int ch=nc; ch<audio.getNumChannels(); ++ch) audio.clear(ch,0,n);
-    outMeterDb.store (thump::gainToDb (maxOut));
     lowReduction.store (lowDetector.grDb);
     highReduction.store (highDetector.grDb);
     limitReduction.store (maxLimiterReduction);

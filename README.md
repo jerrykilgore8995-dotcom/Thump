@@ -1,4 +1,4 @@
-# THUMP v0.2.1 — Analog-style dual-band bass processor
+# THUMP v0.3.0 — Analog-style dual-band bass processor
 
 **JUCE 8 / VST3 & Standalone / C++17**. Gold-and-black, scalable, real JUCE vector faceplate — not a static PNG. Includes eight original bass preset starting points and one-click Windows x64 Actions packaging.
 
@@ -90,3 +90,11 @@ python tests/validate_dsp.py
 ## Validation and future work
 
 `python tests/validate_dsp.py` checks LR4 magnitude summation across 3 sample rates and 5 crossover points, timing design constants, opto release profile, 8 full preset arrays with 39 valid params, and GUI controls. These checks **cannot confirm** successful VST3 compilation, actual measured A/R conformity, transient behavior, latency, peak ceiling, phase after nonlinear effects, or real-time CPU performance. Next step is compiling in the GitHub workflow and running plug-in validation plus 44.1k/48k listening & analyzer tests.
+
+## v0.3 update: practical bass GUI and driven high-band grit
+- Rebuilt straight-on rack UI to 1600 x 860 logical pixels, default **1520 x 817**: fits 21-inch 1080p screens including DAW chrome. No fake input/output meters, no giant shiny 3D borders.
+- TWO prominent gain reduction meters and one limiter GR display. EQ and compressors are in readable, independent sections with no shared component bounds.
+- Satin-gold rotary pots on anodized black/silver panel; black equipment labels and restrained amber pilot indicators.
+- **High drive**: band-limited mid-focused, 10–42dB pre-drive into saturating anti-parallel-softclip-like DSP, then 5.2kHz roll-off. Full wet/dry clipping voice replaces cancellation-prone residual-only processing. This is a powerful simplified distortion, not a detailed transistor/op-amp/diode solver.
+- 8 old presets preserved and all 39 parameter IDs are unchanged; existing projects should recall previous settings.
+- The high wet/dry knob is critical: ~30–60% gives strong audible fret grit; 80–100% reaches full distorted presence. Start drive ~6-8 for Cliff-inspired drive, but it is **not** claimed to recreate his exact rig.
