@@ -2,8 +2,8 @@
 from pathlib import Path
 import math, re
 root=Path(__file__).resolve().parents[1]
-processor=(root/'Source'/'PluginProcessor.cpp').read_text()
-editor=(root/'Source'/'PluginEditor.cpp').read_text()
+processor=(root/'Source'/'PluginProcessor.cpp').read_text(encoding='utf-8')
+editor=(root/'Source'/'PluginEditor.cpp').read_text(encoding='utf-8')
 assert 'const float driveDb=5.8f + 3.6f*s.highDrive;' in processor
 assert 'return x*(1.f-wet) + distorted*wet;' in processor
 assert '(clipped-filtered) * 2.8f' not in processor
