@@ -109,7 +109,7 @@ CompressorModeSwitch::CompressorModeSwitch (juce::AudioProcessorValueTreeState& 
 {
     parameter = tree.getParameter (id);
     rawValue = tree.getRawParameterValue (id);
-    setTooltip ("Independent compressor model: FET 1176 / VCA 160 / OPTO dual slope");
+    // A custom Component does not implement the JUCE SettableTooltipClient interface.
 }
 void CompressorModeSwitch::paint (juce::Graphics& g)
 {
