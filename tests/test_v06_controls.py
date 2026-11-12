@@ -63,7 +63,7 @@ for m in re.finditer(r'addMode\("([^"]+)",([\d.]+),([\d.]+),([\d.]+),([\d.]+)\)'
 for m in re.finditer(r'addChoice\("([^"]+)",\s*\{[^}]+\},\s*([\d.]+),([\d.]+),([\d.]+),([\d.]+)\)',intro,re.S):
     add("choice",*m.groups())
 
-for m in re.finditer(r'addRatioSlider\("([^"]+)",([\d.]+),([\d.]+),([\d.]+),([\d.]+)\)',intro):
+for m in re.finditer(r'add(?:Fet)?RatioSlider\("([^"]+)",([\d.]+),([\d.]+),([\d.]+),([\d.]+)\)',intro):
     add("ratio",*m.groups())
 
 for m in re.finditer(r'addHorizontal\("([^"]+)","[^"]+",([\d.]+),([\d.]+),([\d.]+),([\d.]+),[\d.]+f\)',intro):
@@ -75,6 +75,13 @@ for m in re.finditer(r'addTag\("([^"]+)",([\d.]+),([\d.]+),([\d.]+),([\d.]+),[\d
     label(*m.groups())
 
 assert len(controls)>=55, len(controls)
+assert "fetRatioMenu" not in gui
+assert "updateRatioVisibility();" in intro
+assert 'fetRatioSlider[(size_t)b]->setVisible(mode==0)' in gui
+assert 'vcaRatioSlider[(size_t)b]->setVisible(mode==1)' in gui
+assert '"LOW GR"' in gui and '"HIGH GR"' in gui
+assert '"LIMITER GR"' in gui
+assert 'ptr->textFromValueFunction = [] (double value)' in gui
 assert len(labels)>=40, len(labels)
 def overlaps(a,b):
     return (min(a[2]+a[4],b[2]+b[4])-max(a[2],b[2]) > 1 and
