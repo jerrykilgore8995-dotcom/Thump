@@ -236,7 +236,7 @@ ThumpAudioProcessorEditor::ThumpAudioProcessorEditor (ThumpAudioProcessor& p)
     addEQ("highMidG","highMidQ","MID",1024,356);
     addEQ("high1500G","high1500Q","1.5 kHz",1100,356);
     addEQ("high5000G","high5000Q","5 kHz",1176,356);
-    addHorizontal("highMidHz","MID FREQ Hz",1015,582,186,27,800.f);
+    addHorizontal("highMidHz","MID FREQ Hz",1015,590,186,27,800.f);
     addSwitch("highCompOn","COMP ON",1228,295,105);
     addMode("highMode",1340,295,182,40);
     fetRatioMenu[1] = addChoice("highFetRatio", {"FET 4:1","FET 8:1","FET 12:1","FET 20:1"},
@@ -513,7 +513,7 @@ void ThumpAudioProcessorEditor::paint(juce::Graphics& g)
     drawPanel(g,{36,787,1528,128},"",true);
     drawPanel(g,{36,923,1528,109},"",true);
     minor("FINAL LIMITER",{51,792,151,18});
-    minor("DYNAMIC BASS EQ / 30 ms ATTACK · 150 ms RELEASE",{50,927,525,18});
+    minor("DYNAMIC BASS EQ / 30 ms ATTACK · 150 ms RELEASE",{949,927,585,18});
     drawVU(g,{1184,817,338,77},"LIMITER  •  GR",processor.limitReduction.load(),true);
     for(const auto& tag:tags)
     {
