@@ -84,8 +84,14 @@ void Band::reset() noexcept
     for (auto& f : hp) f.reset();
     for (auto& f : eq) f.reset();
     for (auto& f : lowDivot) f.reset();
-    tubePreHP.reset(); tubePostLP.reset(); lowSatDC.reset();
-    dryPower=wetPower=0; compGain=1;
+    for (auto& f : inputHp) f.reset();
+    dynamicEq.reset();
+    tubePreHP.reset(); tubePostLP.reset();
+    ampPreHP.reset(); ampPostLP.reset(); fuzzPreHP.reset(); fuzzPostLP.reset();
+    lowSatDC.reset();
+    lowMatch.reset(); highMatch.reset();
+    hpf12Blend = hpf24Blend = ampBlend = fuzzBlend = 0.f;
+    lowSatBlend = highSatBlend = 1.f;
 
 }
 
@@ -138,6 +144,13 @@ static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     { p.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID {id,1}, name,value)); };
     fl ("input", "Input", -24, 24, .1f, 0); fl ("output", "Output", -24, 24, .1f, 0);
     fl ("xover", "Crossover Hz", 120, 800, 1, 320); bl ("mono", "MONOIZE", true);
+    fl ("hpfHz", "Pre-split HPF Hz", 20, 45, .1f, 30);
+    p.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID {"hpfSlope",1},
+        "Pre-split HPF Slope", juce::StringArray {"Off", "12 dB/oct", "24 dB/oct"}, 0));
+    bl ("dynOn", "Dynamic Low EQ", false);
+    fl ("dynHz", "Dynamic EQ Frequency Hz", 70, 140, .5f, 100);
+    fl ("dynThresh", "Dynamic EQ Threshold dBFS", -45, -6, .1f, -24);
+    fl ("dynCut", "Dynamic EQ Max Cut dB", 0, 8, .1f, 3);
     bl ("lowSatOn", "Low Saturation", true); fl ("lowDrive", "Low Drive", 1, 10, .01f, 2.8f);
     fl ("lowSatMix", "Low Saturation Mix", 0, 1, .001f, .18f);
     for (const char* id : {"low40G", "low120G", "low220G"}) fl (id, "Low EQ Gain", -12, 12, .1f, 0);
@@ -157,10 +170,15 @@ static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     fl ("lowVcaRatio", "Low VCA Ratio", 1, 120, .1f, 4);
     fl ("lowMix", "Low Blend", 0, 1, .001f, 1);
     bl ("highSatOn", "High Tube Style Saturation", true);
+    p.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID {"highDriveType",1},
+        "High Drive Character", juce::StringArray {"TS Grind", "Amp Grind", "Fuzz Clank"}, 0));
     fl ("highDrive", "High Drive", 1, 10, .01f, 3.8f);
     fl ("highSatMix", "High Saturation Mix", 0, 1, .001f, .38f);
-    for (const char* id : {"high1500G", "high5000G"}) fl (id, "High EQ Gain", -12, 12, .1f, 0);
-    for (const char* id : {"high1500Q", "high5000Q"}) fl (id, "High Proportional Q Trim (1 = Stock)", .3f, 3, .01f, 1.0f);
+    for (const char* id : {"highMidG", "high1500G", "high5000G"})
+        fl (id, "High EQ Gain", -12, 12, .1f, 0);
+    for (const char* id : {"highMidQ", "high1500Q", "high5000Q"})
+        fl (id, "High Proportional Q Trim (1 = Stock)", .3f, 3, .01f, 1.0f);
+    fl ("highMidHz", "High Sweep EQ Frequency", 350, 1500, 1, 800);
     bl ("highCompOn", "High Compressor", true);
     p.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID {"highMode",1},
         "High Compressor Model", juce::StringArray {"FET 1176", "VCA 160", "Opto Dual Slope"}, 1));
@@ -176,6 +194,7 @@ static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     fl ("highVcaRatio", "High VCA Ratio", 1, 120, .1f, 4);
     fl ("highMix", "High Blend", 0, 1, .001f, .72f);
     bl ("limiterOn", "Final Limiter", true);
+    bl ("glueOn", "Limiter Glue Compressor", true);
     fl ("limiterInput", "Limiter Drive", -12, 18, .1f, 4.0f);
     fl ("limiterCeiling", "Limiter Ceiling", -12, 0, .1f, -1);
     fl ("limiterRelease", "Limiter Release ms", 40, 300, 1, 90);
@@ -210,13 +229,31 @@ void ThumpAudioProcessor::prepareToPlay (double fs, int maxBlock)
     oversampling.reset();
     for (auto& b : bands) b.reset();
     lowDetector.reset(); highDetector.reset();
+    filterInitialized = false;
+    dynamicRms2 = dynamicCutDb = 0.f;
+    dynamicCounter = 0;
+    const auto initial = readParams();
+    smoothInputGain = thump::dbToGain (initial.inputDb);
+    smoothOutputGain = thump::dbToGain (initial.outputDb);
+    hostGainSmoothCoeff = 1.f - std::exp (-1.f/(.008f*(float)fs));
+    parameterSmoothCoeff = 1.f - std::exp (-1.f/(.010f*(float)processingSampleRate));
+    bypassCoeff = std::exp (-1.f/(.008f*(float)processingSampleRate));
+    optoAttackCoeff = std::exp (-1000.f/(20.f*(float)processingSampleRate));
+    colorDcCoeff = std::exp (-2.f*thump::pi*14.f/(float)processingSampleRate);
+    for (int idx=0; idx<=200; ++idx)
+    {
+        const float above = 10.f + idx*.1f;
+        const float ms = above<=20.f ? juce::jmap (above,10.f,20.f,15.f,5.f)
+                                     : juce::jmap (above,20.f,30.f,5.f,3.f);
+        vcaAttackLookup[(size_t)idx] = std::exp (-1000.f/(ms*(float)processingSampleRate));
+    }
     stereoWork.setSize (2, maxBlock, false, false, true);
     stereoWork.clear();
     for (auto& pair : highEq) for (auto& eq : pair) eq.reset();
     lookaheadOS = juce::jmax (1, (int) std::ceil (fs * .001)) * 4;
     delayL.assign ((size_t) lookaheadOS, 0.0f);
     delayR.assign ((size_t) lookaheadOS, 0.0f);
-    delayIndex = 0; detectorPeak = 0; glueGrDb = 0; limiterBlend = 1.f;
+    delayIndex = 0; detectorPeak = 0; glueGrDb = 0; limiterBlend = 1.f; glueBlend = 1.f;
     setLatencySamples (juce::roundToInt (oversampling.getLatencyInSamples()) + lookaheadOS / 4);
     updateFilters (readParams());
 }
@@ -227,6 +264,9 @@ thump::State ThumpAudioProcessor::readParams() const noexcept
     auto x = [&](const char* id) { return apvts.getRawParameterValue (id)->load(); };
     thump::State p;
     p.inputDb=x("input"); p.outputDb=x("output"); p.crossover=x("xover"); p.mono=x("mono")>0.5f;
+    p.hpfHz=x("hpfHz"); p.hpfSlope=(int)x("hpfSlope");
+    p.dynamicOn=x("dynOn")>0.5f; p.dynamicHz=x("dynHz");
+    p.dynamicThreshold=x("dynThresh"); p.dynamicMaxCut=x("dynCut");
     p.lowSatOn=x("lowSatOn")>0.5f; p.lowDrive=x("lowDrive"); p.lowSatMix=x("lowSatMix");
     p.eqLowGain[0]=x("low40G"); p.eqLowQ[0]=x("low40Q");
     p.eqLowGain[1]=x("low120G"); p.eqLowQ[1]=x("low120Q");
@@ -237,14 +277,18 @@ thump::State ThumpAudioProcessor::readParams() const noexcept
     p.lowThresh=x("lowThresh"); p.lowAttackMs=x("lowAttack");
     p.lowReleaseMs=x("lowRelease"); p.lowMakeupDb=x("lowMakeup"); p.lowMix=x("lowMix");
     p.highSatOn=x("highSatOn")>0.5f; p.highDrive=x("highDrive"); p.highSatMix=x("highSatMix");
-    p.eqHighGain[0]=x("high1500G"); p.eqHighQ[0]=x("high1500Q");
-    p.eqHighGain[1]=x("high5000G"); p.eqHighQ[1]=x("high5000Q");
+    p.highDriveType=(int)x("highDriveType");
+    p.highMidHz=x("highMidHz");
+    p.eqHighGain[2]=x("high5000G"); p.eqHighQ[2]=x("high5000Q");
+    p.eqHighGain[0]=x("highMidG"); p.eqHighQ[0]=x("highMidQ");
+    p.eqHighGain[1]=x("high1500G"); p.eqHighQ[1]=x("high1500Q");
     p.highCompOn=x("highCompOn")>0.5f; p.highMode=(int)x("highMode");
     p.highRoute=(int)x("highRoute"); p.highFetRatio=(int)x("highFetRatio");
     p.highVcaRatio=x("highVcaRatio");
     p.highThresh=x("highThresh"); p.highAttackMs=x("highAttack");
     p.highReleaseMs=x("highRelease"); p.highMakeupDb=x("highMakeup"); p.highMix=x("highMix");
-    p.limiterOn=x("limiterOn")>0.5f; p.limiterInputDb=x("limiterInput");
+    p.limiterOn=x("limiterOn")>0.5f; p.glueOn=x("glueOn")>0.5f;
+    p.limiterInputDb=x("limiterInput");
     p.limiterCeilingDb=x("limiterCeiling"); p.limiterReleaseMs=x("limiterRelease"); p.limiterMix=x("limiterMix");
     return p;
 }
@@ -255,12 +299,15 @@ void ThumpAudioProcessor::updateFilters (const thump::State& s) noexcept
     for (size_t ch=0; ch<bands.size(); ++ch)
     {
         auto& b = bands[ch];
-        highEq[ch][0].bell (1500, thump::proportionalQ (s.eqHighGain[0], s.eqHighQ[0]),
-                             s.eqHighGain[0], processingSampleRate);
-        highEq[ch][1].bell (5000, thump::proportionalQ (s.eqHighGain[1], s.eqHighQ[1]),
-                             s.eqHighGain[1], processingSampleRate);
+        const float highHz[3] {s.highMidHz, 1500.f, 5000.f};
+        for (int k=0;k<3;++k)
+            highEq[ch][(size_t)k].bell (highHz[k],
+                thump::proportionalQ (s.eqHighGain[k], s.eqHighQ[k]),
+                s.eqHighGain[k], processingSampleRate);
         for (auto& f : b.lp) f.lowPass (s.crossover, qButter, processingSampleRate);
         for (auto& f : b.hp) f.highPass (s.crossover, qButter, processingSampleRate);
+        for (auto& f : b.inputHp) f.highPass (s.hpfHz, qButter, processingSampleRate);
+        b.dynamicEq.bell (s.dynamicHz, .85f, -dynamicCutDb, processingSampleRate);
         for (int i=0; i<3; ++i)
         {
             const float hz = i==0 ? 40.f : i==1 ? 120.f : 220.f;
@@ -275,6 +322,10 @@ void ThumpAudioProcessor::updateFilters (const thump::State& s) noexcept
         }
         b.tubePreHP.highPass (720, qButter, processingSampleRate);
         b.tubePostLP.lowPass (5200, qButter, processingSampleRate);
+        b.ampPreHP.highPass (350, qButter, processingSampleRate);
+        b.ampPostLP.lowPass (6800, qButter, processingSampleRate);
+        b.fuzzPreHP.highPass (250, qButter, processingSampleRate);
+        b.fuzzPostLP.lowPass (4500, qButter, processingSampleRate);
         b.lowSatDC.highPass (18, qButter, processingSampleRate);
     }
 }
@@ -282,19 +333,21 @@ void ThumpAudioProcessor::updateFilters (const thump::State& s) noexcept
 // Level compensator: slow, bounded RMS feedback prevents switching distortion
 // on (or moving Drive) from pushing the next EQ/compressor several dB harder.
 // 35ms tracks musical level without trying to linearize instantaneous clipping.
-float ThumpAudioProcessor::levelMatchedWet (float dry, float wet, thump::Band& b) noexcept
+float ThumpAudioProcessor::levelMatchedWet (float dry, float wet, thump::MatchState& m) noexcept
 {
     const float a = wetMatchCoeff;
-    b.dryPower += a*(dry*dry - b.dryPower);
-    b.wetPower += a*(wet*wet - b.wetPower);
-    const float target = std::sqrt ((b.dryPower+1.e-9f)/(b.wetPower+1.e-9f));
-    b.compGain += a * (juce::jlimit (.15f, 6.f, target)-b.compGain);
-    return wet * b.compGain;
+    m.dryPower += a*(dry*dry - m.dryPower);
+    m.wetPower += a*(wet*wet - m.wetPower);
+    const float target = std::sqrt ((m.dryPower+1.e-9f)/(m.wetPower+1.e-9f));
+    m.compGain += a * (juce::jlimit (.15f, 6.f, target)-m.compGain);
+    return wet * m.compGain;
 }
 
 float ThumpAudioProcessor::runLowSat (float x, int channel, const thump::State& s) noexcept
 {
-    if (!s.lowSatOn) return x;
+    auto& b = bands[(size_t)channel];
+    b.lowSatBlend += parameterSmoothCoeff*((s.lowSatOn ? 1.f : 0.f)-b.lowSatBlend);
+    if (!s.lowSatOn && b.lowSatBlend < 1.e-5f) return x;
     // Asymmetric biased high-gain nonlinearity: unlike the old 2% residual,
     // at Drive 10 this generates strong K2 and K3 (about 20-30% THD for a
     // -15dBFS bass sine with a full wet path); AC-couple residual only.
@@ -308,29 +361,40 @@ float ThumpAudioProcessor::runLowSat (float x, int channel, const thump::State& 
         k*(1.f-.16f*bias) / (1.f+.34f*k*k));
     const float z = juce::jlimit(-5.f,5.f,x/reference);
     const float shaped = reference * (std::tanh(k*z + bias)-std::tanh(bias))/normalizer;
-    auto& b=bands[(size_t)channel];
     const float residual=b.lowSatDC.run(shaped-x);
-    const float wet=levelMatchedWet(x,x+residual,b);
-    return x + s.lowSatMix*(wet-x);
+    const float wet=levelMatchedWet(x,x+residual,b.lowMatch);
+    return x + b.lowSatBlend*s.lowSatMix*(wet-x);
 }
 float ThumpAudioProcessor::runHighSat (float x, int channel, const thump::State& s) noexcept
 {
-    if (!s.highSatOn) return x;
     auto& b=bands[(size_t)channel];
-    // TS808-inspired symmetrical feedback clipping. 720Hz high-pass in the
-    // driven branch + ~5kHz tone rolloff keeps the midrange forward.
+    b.highSatBlend += parameterSmoothCoeff*((s.highSatOn ? 1.f : 0.f)-b.highSatBlend);
+    b.ampBlend += parameterSmoothCoeff*((s.highDriveType==1 ? 1.f : 0.f)-b.ampBlend);
+    b.fuzzBlend += parameterSmoothCoeff*((s.highDriveType==2 ? 1.f : 0.f)-b.fuzzBlend);
+    if (!s.highSatOn && b.highSatBlend < 1.e-5f) return x;
     const float t=juce::jlimit(0.f,1.f,(s.highDrive-1.f)/9.f);
-    const float k=.35f + 4.1f*t*t;
     const float reference=.18f;
-    const float input=b.tubePreHP.run(x);
-    const float z=juce::jlimit(-5.f,5.f,input/reference);
-    const float normalizer=juce::jmax(.12f,k/(1.f+.32f*k*k));
-    const float clipped=reference*std::tanh(k*z)/normalizer;
-    const float wet=b.tubePostLP.run(clipped);
-    // We correct the output RMS, not only the peak. The mix is a true blend
-    // between unclipped high and fully clipped high, not 2% harmonic injection.
-    const float matched=levelMatchedWet(x,wet,b);
-    return x + s.highSatMix*(matched-x);
+    // All paths keep independent pre/post filter history. Smoothed weights
+    // prevent hard jumps when switching types during automation.
+    const float tsIn=b.tubePreHP.run(x);
+    const float tsK=.35f+4.1f*t*t;
+    const float tsZ=juce::jlimit(-5.f,5.f,tsIn/reference);
+    const float tsNorm=juce::jmax(.12f,tsK/(1.f+.32f*tsK*tsK));
+    const float ts=b.tubePostLP.run(reference*std::tanh(tsK*tsZ)/tsNorm);
+    const float ampIn=b.ampPreHP.run(x);
+    const float ampZ=juce::jlimit(-5.f,5.f,ampIn/reference);
+    const float ampK=.7f+5.f*t*t;
+    const float ampBias=.1f+.36f*t;
+    const float amp=b.ampPostLP.run(reference*
+        (std::tanh(ampK*ampZ+ampBias)-std::tanh(ampBias)));
+    const float fuzzIn=b.fuzzPreHP.run(x);
+    const float fuzzZ=juce::jlimit(-5.f,5.f,fuzzIn/reference);
+    const float fuzz=b.fuzzPostLP.run(reference*
+        juce::jlimit(-.75f,.75f,fuzzZ*(1.0f+9.f*t)));
+    const float tsBlend=juce::jmax(0.f,1.f-b.ampBlend-b.fuzzBlend);
+    const float wet=tsBlend*ts+b.ampBlend*amp+b.fuzzBlend*fuzz;
+    const float matched=levelMatchedWet(x,wet,b.highMatch);
+    return x + b.highSatBlend*s.highSatMix*(matched-x);
 }
 
 // Explicit, frequency-dependent compressor coloration. Four prefiltered source
@@ -387,7 +451,7 @@ float ThumpAudioProcessor::compressorColor (float x, float grDb, int mode,
         for(int n=0;n<4;++n) residual += .18f * coeff[n] * harmonics[n] * fraction;
     }
     // DC block ONLY on the tiny generated harmonic path.
-    const float dcCoeff=std::exp(-2.f*thump::pi*14.f/fs);
+    const float dcCoeff=colorDcCoeff;
     state.dc=dcCoeff*state.dc+(1.f-dcCoeff)*residual;
     return x+residual-state.dc;
 }
@@ -430,8 +494,7 @@ void ThumpAudioProcessor::runCompressor (float& l, float& r, thump::Detector& d,
     const float goal = above * (1.0f - 1.0f / ratio);
     if (mode == 0) // FET: measured 1176 A/R limits, knob sets time; fastest clockwise.
     {
-        const float ms = goal > d.grDb ? attackMs : releaseMs;
-        const float coeff = std::exp (-1000.0f / (juce::jmax (.02f,ms) * fs));
+        const float coeff = goal > d.grDb ? d.fetAttackCoeff : d.fetReleaseCoeff;
         d.grDb = coeff * d.grDb + (1.0f - coeff) * goal;
     }
     else if (mode == 1) // original dbx 160 spec: 15 / 5 / 3 ms at 10 / 20 / 30 dB
@@ -439,10 +502,8 @@ void ThumpAudioProcessor::runCompressor (float& l, float& r, thump::Detector& d,
         if (goal > d.grDb)
         {
             // Attack depends on the instantaneous level excursion, not knob position.
-            const float x = juce::jlimit (10.0f, 30.0f, above);
-            const float ms = x <= 20.0f ? juce::jmap (x,10.0f,20.0f,15.0f,5.0f)
-                                         : juce::jmap (x,20.0f,30.0f,5.0f,3.0f);
-            const float c = std::exp (-1000.0f / (ms * fs));
+            const int index=juce::jlimit (0,200,juce::roundToInt((above-10.f)*10.f));
+            const float c = vcaAttackLookup[(size_t)index];
             d.grDb = c * d.grDb + (1.0f-c) * goal;
         }
         else d.grDb = juce::jmax (goal, d.grDb - 120.0f / fs); // dB per second
@@ -451,7 +512,7 @@ void ThumpAudioProcessor::runCompressor (float& l, float& r, thump::Detector& d,
     {
         if (goal >= d.grDb)
         {
-            const float c = std::exp (-1000.0f / (20.0f * fs));
+            const float c = optoAttackCoeff;
             d.grDb = c * d.grDb + (1.0f-c) * goal;
             d.optoReleasing = false;
         }
@@ -475,7 +536,6 @@ void ThumpAudioProcessor::runCompressor (float& l, float& r, thump::Detector& d,
         }
     }
     // 8ms bypass ramp prevents clicks; processing state continues while bypassed.
-    const float bypassCoeff = std::exp (-1.0f / (.008f * fs));
     d.wetBlend = bypassCoeff * d.wetBlend + (1.0f - bypassCoeff) * (enabled ? 1.0f : 0.0f);
     const float gain = thump::dbToGain (-d.grDb + makeupDb);
     const float processedL = compressorColor(l*gain,d.grDb,mode,d.coloration[0]);
