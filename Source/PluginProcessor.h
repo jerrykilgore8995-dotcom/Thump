@@ -37,10 +37,19 @@ struct ColorChannel
     void reset() noexcept { *this = {}; }
 };
 
+struct MatchState
+{
+    float dryPower = 0.f, wetPower = 0.f, compGain = 1.f;
+    void reset() noexcept { *this = {}; }
+};
+
 struct Band
 {
-    Biquad lp[2], hp[2], eq[3], lowDivot[3], tubePreHP, tubePostLP, lowSatDC;
-    float dryPower = 0, wetPower = 0, compGain = 1;
+    Biquad lp[2], hp[2], inputHp[2], eq[3], lowDivot[3], dynamicEq;
+    Biquad tubePreHP, tubePostLP, ampPreHP, ampPostLP, fuzzPreHP, fuzzPostLP, lowSatDC;
+    MatchState lowMatch, highMatch; // Independent RMS trim for each crossover branch.
+    float hpf12Blend = 0.f, hpf24Blend = 0.f;
+    float ampBlend = 0.f, fuzzBlend = 0.f, lowSatBlend = 1.f, highSatBlend = 1.f;
 
     void reset() noexcept;
 };
@@ -52,6 +61,7 @@ struct Detector
     int releaseSample = 0, previousMode = -1;
     bool optoReleasing = false;
     float wetBlend = 1.0f;
+    float fetAttackCoeff = 0.0f, fetReleaseCoeff = 0.0f;
     std::array<ColorChannel,2> coloration;
     void reset() noexcept { *this = {}; }
 };
@@ -59,12 +69,16 @@ struct Detector
 struct State
 {
     float inputDb = 0, outputDb = 0, crossover = 320;
+    float hpfHz = 30.f, dynamicHz = 100.f, dynamicThreshold = -24.f, dynamicMaxCut = 3.f;
+    int hpfSlope = 0, highDriveType = 0; // HPF off/12/24 dB; TS/Amp/Fuzz.
+    bool dynamicOn = false, glueOn = true;
     bool mono = true, lowSatOn = true, lowCompOn = true, highSatOn = true,
          highCompOn = true, limiterOn = true;
     float lowDrive = 2.8f, lowSatMix = 0.18f, highDrive = 3.8f, highSatMix = 0.38f;
     float lowMix = 1, highMix = 0.72f;
     float eqLowGain[3] = {0, 0, 0}, eqLowQ[3] = {1.0f, 1.0f, 1.0f};
-    float eqHighGain[2] = {0, 0}, eqHighQ[2] = {1.0f, 1.0f};
+    float eqHighGain[3] = {0, 0, 0}, eqHighQ[3] = {1.0f, 1.0f, 1.0f};
+    float highMidHz = 800.f;
     int lowMode = 1, highMode = 1; // 0 FET, 1 VCA, 2 OPTO
     int lowRoute = 0, highRoute = 0; // all six permutations
     int lowFetRatio = 0, highFetRatio = 0; // 4, 8, 12, 20
@@ -119,7 +133,7 @@ private:
                         float releaseMs, float makeupDb, int fetRatio, float vcaRatio) noexcept;
     float compressorColor (float sample, float grDb, int mode,
                            thump::ColorChannel& color) noexcept;
-    float levelMatchedWet (float dry, float wet, thump::Band& b) noexcept;
+    float levelMatchedWet (float dry, float wet, thump::MatchState& match) noexcept;
     float runLowSat (float x, int channel, const thump::State&) noexcept;
     float runHighSat (float x, int channel, const thump::State&) noexcept;
 
@@ -129,10 +143,18 @@ private:
     std::array<thump::Band, 2> bands;
     thump::Detector lowDetector, highDetector;
     juce::AudioBuffer<float> stereoWork; // also makes mono hosts safe with a stereo oversampler
-    std::array<std::array<thump::Biquad, 2>, 2> highEq;
+    std::array<std::array<thump::Biquad, 3>, 2> highEq;
     std::vector<float> delayL, delayR;
     int delayIndex = 0, lookaheadOS = 1;
-    float detectorPeak = 0, glueGrDb = 0, limiterBlend = 1.f;
+    float detectorPeak = 0, glueGrDb = 0, limiterBlend = 1.f, glueBlend = 1.f;
+    float dynamicRms2 = 0.f, dynamicCutDb = 0.f;
+    int dynamicCounter = 0;
+    float smoothInputGain = 1.f, smoothOutputGain = 1.f;
+    bool filterInitialized = false;
+    thump::State smoothedFilters;
+    std::array<float, 201> vcaAttackLookup {};
+    float optoAttackCoeff = 0.f, bypassCoeff = 0.f, colorDcCoeff = 0.f;
+    float hostGainSmoothCoeff = 0.f, parameterSmoothCoeff = 0.f;
     double processingSampleRate = 176400;
     float wetMatchCoeff = 0.00016f;
     std::array<float,3> colorPoleCoeff {{0.01f, 0.06f, 0.22f}};
