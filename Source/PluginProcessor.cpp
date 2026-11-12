@@ -235,6 +235,8 @@ void ThumpAudioProcessor::prepareToPlay (double fs, int maxBlock)
     const auto initial = readParams();
     smoothInputGain = thump::dbToGain (initial.inputDb);
     smoothOutputGain = thump::dbToGain (initial.outputDb);
+    smoothLowDrive=initial.lowDrive; smoothHighDrive=initial.highDrive;
+    smoothLowSatMix=initial.lowSatMix; smoothHighSatMix=initial.highSatMix;
     hostGainSmoothCoeff = 1.f - std::exp (-1.f/(.008f*(float)fs));
     parameterSmoothCoeff = 1.f - std::exp (-1.f/(.010f*(float)processingSampleRate));
     bypassCoeff = std::exp (-1.f/(.008f*(float)processingSampleRate));
@@ -555,19 +557,50 @@ void ThumpAudioProcessor::processBlock (juce::AudioBuffer<float>& audio, juce::M
     {
         audio.clear(); return; // the host should never exceed the prepared block size
     }
-    const auto s = readParams();
-    updateFilters (s);
-    const float pre = thump::dbToGain (s.inputDb);
-    // The global OUT control acts on the fully merged signal BEFORE the final
-    // limiter, so final limiting can catch post-blend gain increases as well.
-    const float post = thump::dbToGain (s.outputDb);
+    auto s = readParams();
+    // Smooth response edits between host blocks; avoid zipper noise on EQ and crossover.
+    if (!filterInitialized) { smoothedFilters=s; filterInitialized=true; }
+    else
+    {
+        const float alpha=1.f-std::exp(-(float)n/(.020f*(float)getSampleRate()));
+        auto chase=[alpha](float& v,float target) { v+=alpha*(target-v); };
+        chase(smoothedFilters.crossover,s.crossover);
+        chase(smoothedFilters.hpfHz,s.hpfHz);
+        chase(smoothedFilters.dynamicHz,s.dynamicHz);
+        chase(smoothedFilters.highMidHz,s.highMidHz);
+        for(int k=0;k<3;++k)
+        {
+            chase(smoothedFilters.eqLowGain[k],s.eqLowGain[k]);
+            chase(smoothedFilters.eqLowQ[k],s.eqLowQ[k]);
+            chase(smoothedFilters.eqHighGain[k],s.eqHighGain[k]);
+            chase(smoothedFilters.eqHighQ[k],s.eqHighQ[k]);
+        }
+    }
+    updateFilters(smoothedFilters);
+    const float preTarget=thump::dbToGain(s.inputDb);
+    const float postTarget=thump::dbToGain(s.outputDb);
+    const float osGainSmooth=1.f-std::exp(-1.f/(.008f*(float)processingSampleRate));
     for (int i=0; i<n; ++i)
     {
+        smoothInputGain+=hostGainSmoothCoeff*(preTarget-smoothInputGain);
         const float l = audio.getSample (0,i);
         const float r = nc>1 ? audio.getSample (1,i) : l;
-        stereoWork.setSample (0,i,l*pre);
-        stereoWork.setSample (1,i,r*pre);
+        stereoWork.setSample (0,i,l*smoothInputGain);
+        stereoWork.setSample (1,i,r*smoothInputGain);
     }
+    auto cacheFetTimes=[this](thump::Detector& d,float attack,float releaseTime)
+    {
+        const float fs=(float)processingSampleRate;
+        d.fetAttackCoeff=std::exp(-1000.f/(juce::jmax(.02f,attack)*fs));
+        d.fetReleaseCoeff=std::exp(-1000.f/(juce::jmax(1.f,releaseTime)*fs));
+    };
+    cacheFetTimes(lowDetector,s.lowAttackMs,s.lowReleaseMs);
+    cacheFetTimes(highDetector,s.highAttackMs,s.highReleaseMs);
+    const float lowDriveTarget=s.lowDrive, highDriveTarget=s.highDrive;
+    const float lowWetTarget=s.lowSatMix, highWetTarget=s.highSatMix;
+    const float dynRmsA=1.f-std::exp(-1.f/(.020f*(float)processingSampleRate));
+    const float dynAttackA=1.f-std::exp(-1.f/(.030f*(float)processingSampleRate));
+    const float dynReleaseA=1.f-std::exp(-1.f/(.150f*(float)processingSampleRate));
     juce::dsp::AudioBlock<float> source (stereoWork);
     auto work = source.getSubBlock (0, (size_t)n);
     auto up = oversampling.processSamplesUp (juce::dsp::AudioBlock<const float>(work));
@@ -581,16 +614,45 @@ void ThumpAudioProcessor::processBlock (juce::AudioBuffer<float>& audio, juce::M
     }; // 0 EQ, 1 DRIVE, 2 COMP
     for (int i=0; i<count; ++i)
     {
+        smoothLowDrive+=parameterSmoothCoeff*(lowDriveTarget-smoothLowDrive);
+        smoothHighDrive+=parameterSmoothCoeff*(highDriveTarget-smoothHighDrive);
+        smoothLowSatMix+=parameterSmoothCoeff*(lowWetTarget-smoothLowSatMix);
+        smoothHighSatMix+=parameterSmoothCoeff*(highWetTarget-smoothHighSatMix);
+        s.lowDrive=smoothLowDrive; s.highDrive=smoothHighDrive;
+        s.lowSatMix=smoothLowSatMix; s.highSatMix=smoothHighSatMix;
+        smoothOutputGain+=osGainSmooth*(postTarget-smoothOutputGain);
         float lo[2], hi[2];
         const float in[2] {left[i],right[i]};
         for (int ch=0; ch<2; ++ch)
         {
             auto& b=bands[(size_t)ch];
-            lo[ch]=b.lp[1].run(b.lp[0].run(in[ch]));
-            hi[ch]=b.hp[1].run(b.hp[0].run(in[ch]));
+            b.hpf12Blend+=parameterSmoothCoeff*((s.hpfSlope!=0?1.f:0.f)-b.hpf12Blend);
+            b.hpf24Blend+=parameterSmoothCoeff*((s.hpfSlope==2?1.f:0.f)-b.hpf24Blend);
+            const float hp12=b.inputHp[0].run(in[ch]);
+            const float hp24=b.inputHp[1].run(hp12);
+            const float hp=hp12+b.hpf24Blend*(hp24-hp12);
+            const float clean=in[ch]+b.hpf12Blend*(hp-in[ch]);
+            lo[ch]=b.lp[1].run(b.lp[0].run(clean));
+            hi[ch]=b.hp[1].run(b.hp[0].run(clean));
         }
-        // MONOIZE controls ONLY the low band. High stereo content is untouched.
         if(s.mono) lo[0]=lo[1]=.5f*(lo[0]+lo[1]);
+        // Linked dynamic EQ sidechain, with 30ms attack and 150ms release.
+        const float bassPeak=juce::jmax(std::abs(lo[0]),std::abs(lo[1]));
+        dynamicRms2+=dynRmsA*(bassPeak*bassPeak-dynamicRms2);
+        const float dynOver=thump::gainToDb(std::sqrt(juce::jmax(0.f,dynamicRms2)))
+                             -s.dynamicThreshold;
+        const float cutTarget=s.dynamicOn
+            ? s.dynamicMaxCut*juce::jlimit(0.f,1.f,dynOver/9.f) : 0.f;
+        const float dynAlpha=cutTarget>dynamicCutDb?dynAttackA:dynReleaseA;
+        dynamicCutDb+=dynAlpha*(cutTarget-dynamicCutDb);
+        if(++dynamicCounter>=64)
+        {
+            dynamicCounter=0;
+            for(auto& b:bands)
+                b.dynamicEq.bell(smoothedFilters.dynamicHz,.85f,-dynamicCutDb,processingSampleRate);
+        }
+        for(int ch=0;ch<2;++ch)
+            lo[ch]=bands[(size_t)ch].dynamicEq.run(lo[ch]);
         const auto routeLow=orders[juce::jlimit(0,5,s.lowRoute)];
         const auto routeHigh=orders[juce::jlimit(0,5,s.highRoute)];
         for(int step=0;step<3;++step)
@@ -608,7 +670,8 @@ void ThumpAudioProcessor::processBlock (juce::AudioBuffer<float>& audio, juce::M
                               s.lowFetRatio,s.lowVcaRatio);
             if(highStage==0)
                 for(int ch=0;ch<2;++ch)
-                    hi[ch]=highEq[(size_t)ch][1].run(highEq[(size_t)ch][0].run(hi[ch]));
+                    hi[ch]=highEq[(size_t)ch][2].run(highEq[(size_t)ch][1].run(
+                        highEq[(size_t)ch][0].run(hi[ch])));
             else if(highStage==1)
                 for(int ch=0;ch<2;++ch) hi[ch]=runHighSat(hi[ch],ch,s);
             else
@@ -616,8 +679,8 @@ void ThumpAudioProcessor::processBlock (juce::AudioBuffer<float>& audio, juce::M
                               s.highThresh,s.highAttackMs,s.highReleaseMs,s.highMakeupDb,
                               s.highFetRatio,s.highVcaRatio);
         }
-        left[i] = (lo[0]*s.lowMix + hi[0]*s.highMix) * post;
-        right[i] = (lo[1]*s.lowMix + hi[1]*s.highMix) * post;
+        left[i] = (lo[0]*s.lowMix + hi[0]*s.highMix) * smoothOutputGain;
+        right[i] = (lo[1]*s.lowMix + hi[1]*s.highMix) * smoothOutputGain;
     }
     const float ceiling = thump::dbToGain (s.limiterCeilingDb);
     const float limiterIn = thump::dbToGain (s.limiterInputDb);
@@ -636,12 +699,13 @@ void ThumpAudioProcessor::processBlock (juce::AudioBuffer<float>& audio, juce::M
         // final peak catcher. Above a ceiling-relative -9 dB threshold, it
         // progressively 'locks' the combined bass while retaining transients.
         const float overGlueDb = thump::gainToDb (p) - (s.limiterCeilingDb-9.f);
-        const float targetGlueDb = s.limiterOn
+        const float targetGlueDb = (s.limiterOn && s.glueOn)
             ? juce::jlimit (0.f, 4.5f, juce::jmax (0.f, overGlueDb)*.2857f)
             : 0.f;
         const float c = targetGlueDb > glueGrDb ? glueAttack : glueRelease;
         glueGrDb = c * glueGrDb + (1.f-c) * targetGlueDb;
-        const float glueGain = thump::dbToGain (-glueGrDb);
+        glueBlend+=bypassSlew*((s.glueOn ? 1.f : 0.f)-glueBlend);
+        const float glueGain = thump::dbToGain (-glueGrDb*glueBlend);
         // 1ms lookahead: detector examines the undelayed stream, while gain
         // is applied to the appropriately delayed stream. Shared stereo
         // envelope preserves center image. Peak catcher is fast/clean.
@@ -652,9 +716,13 @@ void ThumpAudioProcessor::processBlock (juce::AudioBuffer<float>& audio, juce::M
         const float totalGain = glueGain * limiterGain;
         const float targetBlend = s.limiterOn ? s.limiterMix : 0.f;
         limiterBlend += bypassSlew * (targetBlend - limiterBlend);
-        const float appliedGain = 1.f - limiterBlend * (1.f-totalGain);
+        float appliedGain = 1.f - limiterBlend * (1.f-totalGain);
         const size_t index = (size_t) delayIndex;
         const float delayedA = delayL[index], delayedB = delayR[index];
+        // Host sample ceiling is guaranteed for full wet, not partial dry blend.
+        if(s.limiterOn && s.limiterMix>=.9999f)
+            appliedGain=juce::jmin(appliedGain,
+                ceiling/juce::jmax(juce::jmax(std::abs(delayedA),std::abs(delayedB)),1.e-9f));
         delayL[index] = a; delayR[index] = b;
         delayIndex = (delayIndex+1) % (int)delayL.size();
         left[i] = delayedA * appliedGain;
@@ -664,6 +732,20 @@ void ThumpAudioProcessor::processBlock (juce::AudioBuffer<float>& audio, juce::M
 
     }
     oversampling.processSamplesDown (work);
+    // Decimation can introduce small new sample peaks. Guard at host rate.
+    // This guarantees sample peaks at 100% wet, NOT intersample true peaks.
+    if(s.limiterOn && s.limiterMix>=.9999f)
+        for(int i=0;i<n;++i)
+        {
+            const float l=stereoWork.getSample(0,i), r=stereoWork.getSample(1,i);
+            const float maximum=juce::jmax(std::abs(l),std::abs(r));
+            if(maximum>ceiling)
+            {
+                const float g=ceiling/maximum;
+                stereoWork.setSample(0,i,l*g);
+                stereoWork.setSample(1,i,r*g);
+            }
+        }
     for (int ch=0; ch<nc; ++ch)
     {
         auto* d = audio.getWritePointer(ch);
@@ -672,8 +754,8 @@ void ThumpAudioProcessor::processBlock (juce::AudioBuffer<float>& audio, juce::M
         { d[i] = src[i]; }
     }
     for (int ch=nc; ch<audio.getNumChannels(); ++ch) audio.clear(ch,0,n);
-    lowReduction.store (lowDetector.grDb);
-    highReduction.store (highDetector.grDb);
+    lowReduction.store (s.lowCompOn ? lowDetector.grDb*lowDetector.wetBlend : 0.f);
+    highReduction.store (s.highCompOn ? highDetector.grDb*highDetector.wetBlend : 0.f);
     limitReduction.store (maxLimiterReduction);
 }
 
@@ -695,6 +777,16 @@ void ThumpAudioProcessor::applyFactoryPreset (int index)
         {"highFetRatio",0.f},{"lowVcaRatio",4.f},{"highVcaRatio",4.f}}})
         if (auto* param=apvts.getParameter(item.first))
             param->setValueNotifyingHost(param->convertTo0to1(item.second));
+    // New parameters default neutral when recalling a legacy factory preset.
+    for (const auto& item : std::array<std::pair<const char*, float>,10> {{
+        {"hpfHz",30.f},{"hpfSlope",0.f},{"dynOn",0.f},
+        {"dynHz",100.f},{"dynThresh",-24.f},{"dynCut",3.f},
+        {"highDriveType",0.f},{"highMidG",0.f},{"highMidQ",1.f},
+        {"highMidHz",800.f}}})
+        if (auto* param=apvts.getParameter(item.first))
+            param->setValueNotifyingHost(param->convertTo0to1(item.second));
+    if(auto* glue=apvts.getParameter("glueOn"))
+        glue->setValueNotifyingHost(glue->convertTo0to1(1.f));
     selectedPreset.store(index);
 }
 void ThumpAudioProcessor::getStateInformation (juce::MemoryBlock& dest)
