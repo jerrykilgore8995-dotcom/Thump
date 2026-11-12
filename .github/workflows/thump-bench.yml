@@ -1,0 +1,46 @@
+name: THUMP v0.5 Offline Measurements
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tests/ThumpBench.cpp'
+      - '.github/workflows/thump-bench.yml'
+      - 'CMakeLists.txt'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  bench:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure JUCE / Windows x64
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+      - name: Compile actual THUMP audio processor and offline test host
+        run: cmake --build build --config Release --target ThumpBench --parallel 4
+      - name: Run exhaustive EQ and component sweeps
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem build -Filter 'ThumpBench.exe' -Recurse | Where-Object {$_.FullName -match 'Release'} | Select-Object -First 1
+          if (-not $exe) { throw 'ThumpBench.exe not found' }
+          & $exe.FullName measurements/v0.5
+          if ($LASTEXITCODE -ne 0) { throw "ThumpBench exit $LASTEXITCODE" }
+          Get-ChildItem measurements/v0.5/*.csv | ForEach-Object { Write-Host "$($_.Name) : $((Get-Content $_.FullName | Measure-Object -Line).Lines) lines" }
+      - name: Upload measurement CSVs
+        uses: actions/upload-artifact@v4
+        with:
+          name: THUMP-v0.5-Measurements-44k1
+          path: measurements/v0.5/*.csv
+      - name: Publish measured data to repository
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add measurements/v0.5/*.csv
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m 'Add measured THUMP v0.5 frequency, phase, compressor and THD datasets'
+            git push
+          }
