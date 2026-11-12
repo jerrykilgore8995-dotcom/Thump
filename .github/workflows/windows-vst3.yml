@@ -30,6 +30,15 @@ jobs:
         run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
       - name: Build VST3 Release
         run: cmake --build build --config Release --target Thump_VST3 --parallel 4
+      - name: Build real-processor signal-flow smoke test
+        run: cmake --build build --config Release --target ThumpSmoke --parallel 4
+      - name: Exercise THUMP v0.6 DSP at 44.1 kHz
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem build -Recurse -File -Filter 'ThumpSmoke.exe' | Where-Object { $_.FullName -match 'Release' } | Select-Object -First 1
+          if (-not $exe) { throw 'ThumpSmoke.exe not found' }
+          & $exe.FullName
+          if ($LASTEXITCODE -ne 0) { throw "THUMP smoke test failed: $LASTEXITCODE" }
       - name: Package VST3
         shell: pwsh
         run: |
