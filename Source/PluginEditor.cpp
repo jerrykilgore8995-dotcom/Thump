@@ -371,6 +371,7 @@ juce::Slider* ThumpAudioProcessorEditor::addRatioSlider (const char* id,float x,
     {
         return value.upToFirstOccurrenceOf(":",false,false).getDoubleValue();
     };
+    ptr->updateText(); // Reformat the initially attached value before first paint.
     sliders.push_back(std::move(slider));
     return ptr;
 }
@@ -401,6 +402,7 @@ juce::Slider* ThumpAudioProcessorEditor::addFetRatioSlider (
         if(ratio >= 8) return 1.0;
         return 0.0;
     };
+    ptr->updateText(); // Show 4:1 / 8:1 / 12:1 / 20:1 immediately.
     sliders.push_back(std::move(slider));
     return ptr;
 }
