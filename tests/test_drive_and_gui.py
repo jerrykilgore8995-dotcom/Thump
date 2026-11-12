@@ -47,8 +47,8 @@ assert low10[0] > 3*low1[0]
 assert high10[0] > 3*high1[0]
 assert high10[1] < 1.e-4,high10
 assert low10[1] > .04,low10
-assert 'return x + s.lowSatMix*(wet-x);' in cpp
-assert 'return x + s.highSatMix*(matched-x);' in cpp
+assert 'return x + b.lowSatBlend*s.lowSatMix*(wet-x);' in cpp
+assert 'return x + b.highSatBlend*s.highSatMix*(matched-x);' in cpp
 assert 'levelMatchedWet' in cpp
 assert 'oversampling {2, 2' in head
 for id in ('lowRoute','highRoute','lowFetRatio','highFetRatio','lowVcaRatio','highVcaRatio'):
