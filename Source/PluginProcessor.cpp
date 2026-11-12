@@ -378,25 +378,34 @@ float ThumpAudioProcessor::runHighSat (float x, int channel, const thump::State&
     if (!s.highSatOn && b.highSatBlend < 1.e-5f) return x;
     const float t=juce::jlimit(0.f,1.f,(s.highDrive-1.f)/9.f);
     const float reference=.18f;
-    // All paths keep independent pre/post filter history. Smoothed weights
-    // prevent hard jumps when switching types during automation.
-    const float tsIn=b.tubePreHP.run(x);
-    const float tsK=.35f+4.1f*t*t;
-    const float tsZ=juce::jlimit(-5.f,5.f,tsIn/reference);
-    const float tsNorm=juce::jmax(.12f,tsK/(1.f+.32f*tsK*tsK));
-    const float ts=b.tubePostLP.run(reference*std::tanh(tsK*tsZ)/tsNorm);
-    const float ampIn=b.ampPreHP.run(x);
-    const float ampZ=juce::jlimit(-5.f,5.f,ampIn/reference);
-    const float ampK=.7f+5.f*t*t;
-    const float ampBias=.1f+.36f*t;
-    const float amp=b.ampPostLP.run(reference*
-        (std::tanh(ampK*ampZ+ampBias)-std::tanh(ampBias)));
-    const float fuzzIn=b.fuzzPreHP.run(x);
-    const float fuzzZ=juce::jlimit(-5.f,5.f,fuzzIn/reference);
-    const float fuzz=b.fuzzPostLP.run(reference*
-        juce::jlimit(-.75f,.75f,fuzzZ*(1.0f+9.f*t)));
+    // Process only active/crossfading nonlinearities to avoid 3 full
+    // saturation paths at 4x host rate. A mode fade starts from zero weight.
     const float tsBlend=juce::jmax(0.f,1.f-b.ampBlend-b.fuzzBlend);
-    const float wet=tsBlend*ts+b.ampBlend*amp+b.fuzzBlend*fuzz;
+    float wet=0.f;
+    if(tsBlend>1.e-5f)
+    {
+        const float tsIn=b.tubePreHP.run(x);
+        const float tsK=.35f+4.1f*t*t;
+        const float tsZ=juce::jlimit(-5.f,5.f,tsIn/reference);
+        const float tsNorm=juce::jmax(.12f,tsK/(1.f+.32f*tsK*tsK));
+        wet+=tsBlend*b.tubePostLP.run(reference*std::tanh(tsK*tsZ)/tsNorm);
+    }
+    if(b.ampBlend>1.e-5f)
+    {
+        const float ampIn=b.ampPreHP.run(x);
+        const float ampZ=juce::jlimit(-5.f,5.f,ampIn/reference);
+        const float ampK=.7f+5.f*t*t;
+        const float ampBias=.1f+.36f*t;
+        wet+=b.ampBlend*b.ampPostLP.run(reference*
+            (std::tanh(ampK*ampZ+ampBias)-std::tanh(ampBias)));
+    }
+    if(b.fuzzBlend>1.e-5f)
+    {
+        const float fuzzIn=b.fuzzPreHP.run(x);
+        const float fuzzZ=juce::jlimit(-5.f,5.f,fuzzIn/reference);
+        wet+=b.fuzzBlend*b.fuzzPostLP.run(reference*
+            juce::jlimit(-.75f,.75f,fuzzZ*(1.0f+9.f*t)));
+    }
     const float matched=levelMatchedWet(x,wet,b.highMatch);
     return x + b.highSatBlend*s.highSatMix*(matched-x);
 }
@@ -465,6 +474,12 @@ void ThumpAudioProcessor::runCompressor (float& l, float& r, thump::Detector& d,
                                         float attackMs, float releaseMs, float makeupDb, int fetRatio, float vcaRatio) noexcept
 {
     const float fs = (float) processingSampleRate;
+    if(!enabled && d.wetBlend<1.e-4f)
+    {
+        d.grDb=0.f; d.rms2=0.f;
+        d.optoReleasing=false; d.releaseSample=0;
+        return; // Zero-CPU color and envelope when the compressor is fully bypassed.
+    }
     mode = juce::jlimit (0, 2, mode);
     if (d.previousMode != mode)
     {
@@ -638,23 +653,28 @@ void ThumpAudioProcessor::processBlock (juce::AudioBuffer<float>& audio, juce::M
             hi[ch]=b.hp[1].run(b.hp[0].run(clean));
         }
         if(s.mono) lo[0]=lo[1]=.5f*(lo[0]+lo[1]);
-        // Linked dynamic EQ sidechain, with 30ms attack and 150ms release.
-        const float bassPeak=juce::jmax(std::abs(lo[0]),std::abs(lo[1]));
-        dynamicRms2+=dynRmsA*(bassPeak*bassPeak-dynamicRms2);
-        const float dynOver=thump::gainToDb(std::sqrt(juce::jmax(0.f,dynamicRms2)))
-                             -s.dynamicThreshold;
-        const float cutTarget=s.dynamicOn
-            ? s.dynamicMaxCut*juce::jlimit(0.f,1.f,dynOver/9.f) : 0.f;
-        const float dynAlpha=cutTarget>dynamicCutDb?dynAttackA:dynReleaseA;
-        dynamicCutDb+=dynAlpha*(cutTarget-dynamicCutDb);
-        if(++dynamicCounter>=64)
+        // Avoid RMS/log10 and filter work after the optional dynamic EQ
+        // has fully released. When enabled, its two channels stay phase-linked.
+        if(s.dynamicOn || dynamicCutDb>1.e-4f)
         {
-            dynamicCounter=0;
-            for(auto& b:bands)
-                b.dynamicEq.bell(smoothedFilters.dynamicHz,.85f,-dynamicCutDb,processingSampleRate);
+            const float bassPeak=juce::jmax(std::abs(lo[0]),std::abs(lo[1]));
+            dynamicRms2+=dynRmsA*(bassPeak*bassPeak-dynamicRms2);
+            const float dynOver=thump::gainToDb(std::sqrt(juce::jmax(0.f,dynamicRms2)))
+                                 -s.dynamicThreshold;
+            const float cutTarget=s.dynamicOn
+                ? s.dynamicMaxCut*juce::jlimit(0.f,1.f,dynOver/9.f) : 0.f;
+            const float dynAlpha=cutTarget>dynamicCutDb?dynAttackA:dynReleaseA;
+            dynamicCutDb+=dynAlpha*(cutTarget-dynamicCutDb);
+            if(++dynamicCounter>=64)
+            {
+                dynamicCounter=0;
+                for(auto& b:bands)
+                    b.dynamicEq.bell(smoothedFilters.dynamicHz,.85f,-dynamicCutDb,processingSampleRate);
+            }
+            for(int ch=0;ch<2;++ch)
+                lo[ch]=bands[(size_t)ch].dynamicEq.run(lo[ch]);
         }
-        for(int ch=0;ch<2;++ch)
-            lo[ch]=bands[(size_t)ch].dynamicEq.run(lo[ch]);
+        else dynamicRms2=0.f;
         const auto routeLow=orders[juce::jlimit(0,5,s.lowRoute)];
         const auto routeHigh=orders[juce::jlimit(0,5,s.highRoute)];
         for(int step=0;step<3;++step)
