@@ -30,9 +30,17 @@ struct Biquad
     }
 };
 
+struct ColorChannel
+{
+    // Four gentle analysis bands affect ONLY harmonic residuals, not the main audio.
+    float lp250 = 0, lp2200 = 0, lp7500 = 0, previous = 0, dc = 0;
+    void reset() noexcept { *this = {}; }
+};
+
 struct Band
 {
     Biquad lp[2], hp[2], eq[3], lowDivot[3], tubePreHP, tubePostLP, lowSatDC;
+    float dryPower = 0, wetPower = 0, compGain = 1;
 
     void reset() noexcept;
 };
@@ -44,6 +52,7 @@ struct Detector
     int releaseSample = 0, previousMode = -1;
     bool optoReleasing = false;
     float wetBlend = 1.0f;
+    std::array<ColorChannel,2> coloration;
     void reset() noexcept { *this = {}; }
 };
 
@@ -57,6 +66,9 @@ struct State
     float eqLowGain[3] = {0, 0, 0}, eqLowQ[3] = {1.0f, 1.0f, 1.0f};
     float eqHighGain[2] = {0, 0}, eqHighQ[2] = {1.0f, 1.0f};
     int lowMode = 1, highMode = 1; // 0 FET, 1 VCA, 2 OPTO
+    int lowRoute = 0, highRoute = 0; // all six permutations
+    int lowFetRatio = 0, highFetRatio = 0; // 4, 8, 12, 20
+    float lowVcaRatio = 4, highVcaRatio = 4; // continuously variable 1..120
     float lowThresh = -24, lowAttackMs = 0.2f, lowReleaseMs = 250, lowMakeupDb = 2;
     float highThresh = -22, highAttackMs = 0.2f, highReleaseMs = 180, highMakeupDb = 1;
     float limiterInputDb = 4, limiterCeilingDb = -1.0f, limiterReleaseMs = 90, limiterMix = 1;
@@ -104,12 +116,15 @@ private:
     void updateFilters (const thump::State&) noexcept;
     void runCompressor (float& left, float& right, thump::Detector& detector,
                         bool enabled, int mode, float threshold, float attackMs,
-                        float releaseMs, float makeupDb) noexcept;
+                        float releaseMs, float makeupDb, int fetRatio, float vcaRatio) noexcept;
+    float compressorColor (float sample, float grDb, int mode,
+                           thump::ColorChannel& color) noexcept;
+    float levelMatchedWet (float dry, float wet, thump::Band& b) noexcept;
     float runLowSat (float x, int channel, const thump::State&) noexcept;
     float runHighSat (float x, int channel, const thump::State&) noexcept;
 
-    // A full-band shared 2x oversampling path keeps the two crossover branches aligned.
-    juce::dsp::Oversampling<float> oversampling {2, 1,
+    // 4x on the ENTIRE signal path; this reduces (does not eliminate) aliasing.
+    juce::dsp::Oversampling<float> oversampling {2, 2,
         juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true, true};
     std::array<thump::Band, 2> bands;
     thump::Detector lowDetector, highDetector;
@@ -118,7 +133,9 @@ private:
     std::vector<float> delayL, delayR;
     int delayIndex = 0, lookaheadOS = 1;
     float detectorPeak = 0, glueGrDb = 0, limiterBlend = 1.f;
-    double processingSampleRate = 88200;
+    double processingSampleRate = 176400;
+    float wetMatchCoeff = 0.00016f;
+    std::array<float,3> colorPoleCoeff {{0.01f, 0.06f, 0.22f}};
     std::atomic<int> selectedPreset {-1};
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ThumpAudioProcessor)
 };

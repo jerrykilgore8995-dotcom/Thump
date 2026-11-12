@@ -44,6 +44,10 @@ private:
     ThumpAudioProcessor& processor;
     ThumpLookAndFeel vintage;
     juce::ComboBox presetMenu;
+    std::vector<std::unique_ptr<juce::ComboBox>> dropdowns;
+    std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> dropdownBindings;
+    std::array<juce::ComboBox*, 2> fetRatioMenu {nullptr,nullptr};
+    std::array<juce::Slider*, 2> vcaRatioSlider {nullptr,nullptr};
     std::vector<std::unique_ptr<juce::Slider>> sliders;
     std::vector<std::unique_ptr<juce::ToggleButton>> switches;
     std::vector<std::unique_ptr<CompressorModeSwitch>> modes;
@@ -59,6 +63,9 @@ private:
     void addEQ (const char* idG, const char* idQ, const char* label, float x, float yTop=432);
     void addSwitch (const char* id, const char* text, float x, float y, float w=96);
     void addMode (const char* id, float x, float y, float width=160, float height=56);
+    juce::ComboBox* addChoice (const char* id, const juce::StringArray& options,
+                              float x, float y, float w, float h);
+    juce::Slider* addRatioSlider (const char* id,float x,float y,float w,float h);
     void addTag (juce::String text, float x, float y, float w, float h=18, float size=13);
     void timerCallback() override;
     void drawPanel (juce::Graphics&, juce::Rectangle<float>, const juce::String&, bool gold=false);

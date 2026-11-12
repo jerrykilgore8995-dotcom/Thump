@@ -1,28 +1,63 @@
-"""v0.3 design/regression guardrails, stdlib only; not DAW listening tests."""
+"""v0.5 saturation/geometry/ratio regression checks. Python stdlib only."""
 from pathlib import Path
-import math, re
-root=Path(__file__).resolve().parents[1]
-processor=(root/'Source'/'PluginProcessor.cpp').read_text(encoding='utf-8')
-editor=(root/'Source'/'PluginEditor.cpp').read_text(encoding='utf-8')
-assert 'const float driveDb=5.8f + 3.6f*s.highDrive;' in processor
-assert 'return x*(1.f-wet) + distorted*wet;' in processor
-assert '(clipped-filtered) * 2.8f' not in processor
-assert 'drawVU(g,{225,186' not in editor and 'drawVU(g,{1128,186' not in editor
-assert '"LOW  •  GR"' in editor and '"HIGH  •  GR"' in editor
-assert '"LIMITER  •  GR"' in editor
-for key in ('lowCompOn','highCompOn','lowMode','highMode'):
-    assert key in editor
-# Static transfer-model sanity: with healthy bass harmonics, Drive 8 really clips.
-def saturate(x,drive):
-    dv=10**((5.8+3.6*drive)/20)
-    a=x*dv
-    d1=math.tanh(a*1.45+.11)-math.tanh(.11)
-    d2=math.tanh(a*1.45-.05)-math.tanh(-.05)
-    return (.58*d1+.42*d2)*(.52+(drive-1)*(.31-.52)/9)
-assert saturate(.02,8.0) > 4*saturate(.02,1.0)
-assert saturate(.02,10.0) > .1  # before LPF, clearly stronger than 20mV clean high band
-# Check named GUI layout section rectangles do not overlap each other.
-for left_a,left_b in ((36,778),(822,1564)):
-    assert left_a < left_b
-assert 'setSize (1520,817)' in editor
-print('PASS: strong TS-style high-band clipping, non-cancelling wet mix and three GR meters')
+import math
+ROOT=Path(__file__).resolve().parents[1]
+cpp=(ROOT/'Source/PluginProcessor.cpp').read_text()
+head=(ROOT/'Source/PluginProcessor.h').read_text()
+gui=(ROOT/'Source/PluginEditor.cpp').read_text()
+
+def thd_and_k2(y,fs,hz):
+    n=len(y)
+    def amp(harm):
+        omega=2*math.pi*hz*harm/fs
+        re=sum(a*math.cos(omega*i) for i,a in enumerate(y))
+        im=sum(a*math.sin(omega*i) for i,a in enumerate(y))
+        return math.hypot(re,im)
+    a=[amp(i) for i in range(1,21)]
+    return math.sqrt(sum(z*z for z in a[1:]))/a[0],a[1]/a[0],a[2]/a[0]
+
+def saturate_low(x,drive):
+    t=(drive-1)/9
+    k=.3+2.7*t*t
+    b=.15+.32*t
+    z=max(-5,min(5,x/.18))
+    normal=max(.12,k*(1-.16*b)/(1+.34*k*k))
+    return .18*(math.tanh(k*z+b)-math.tanh(b))/normal
+
+def saturate_high(x,drive):
+    t=(drive-1)/9
+    k=.35+4.1*t*t
+    z=max(-5,min(5,x/.18))
+    normal=max(.12,k/(1+.32*k*k))
+    return .18*math.tanh(k*z)/normal
+
+fs=176400
+n=fs//10
+level=10**(-15/20)
+low=[level*math.sin(2*math.pi*80*i/fs) for i in range(n)]
+high=[level*math.sin(2*math.pi*1000*i/fs) for i in range(n)]
+low1=thd_and_k2([saturate_low(x,1) for x in low],fs,80)
+low10=thd_and_k2([saturate_low(x,10) for x in low],fs,80)
+# At 1k, TS pre-emphasis attenuates ~.81 and post 5k LP reduces upper harmonic energy.
+high1=thd_and_k2([saturate_high(.81*x,1) for x in high],fs,1000)
+high10=thd_and_k2([saturate_high(.81*x,10) for x in high],fs,1000)
+assert .2 < low10[0] < .36,low10
+assert .2 < high10[0] < .38,high10
+assert low10[0] > 3*low1[0]
+assert high10[0] > 3*high1[0]
+assert high10[1] < 1.e-4,high10
+assert low10[1] > .04,low10
+assert 'return x + s.lowSatMix*(wet-x);' in cpp
+assert 'return x + s.highSatMix*(matched-x);' in cpp
+assert 'levelMatchedWet' in cpp
+assert 'oversampling {2, 2' in head
+for id in ('lowRoute','highRoute','lowFetRatio','highFetRatio','lowVcaRatio','highVcaRatio'):
+    assert id in cpp and id in gui,id
+assert 'if(s.mono) lo[0]=lo[1]=' in cpp
+assert 'if (s.mono) left[i]' not in cpp
+assert '"LOW  •  GR"' in gui and '"HIGH  •  GR"' in gui
+assert '"LIMITER  •  GR"' in gui
+assert '"LOW MONO ONLY"' in gui
+print('PASS: low/high drive increase to >=20% pre-filter THD at max for -15dBFS input')
+print('PASS: symmetrical high, asymmetric low, no dry/wet residual-cancellation')
+print('PASS: 4x, independent 6-way routing, real GR meters, low-only MONOIZE')

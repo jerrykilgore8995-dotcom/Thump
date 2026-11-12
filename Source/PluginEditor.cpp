@@ -68,8 +68,17 @@ void ThumpLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w,
 }
 
 void ThumpLookAndFeel::drawLinearSlider (juce::Graphics& g, int x,int y,int w,int h,float sliderPos,
-                                       float,float,juce::Slider::SliderStyle,juce::Slider&)
+                                       float,float,juce::Slider::SliderStyle sliderStyle,juce::Slider&)
 {
+    if (sliderStyle == juce::Slider::LinearHorizontal || sliderStyle == juce::Slider::LinearBar)
+    {
+        const float cy=y+h*.5f;
+        g.setColour(juce::Colour::fromRGB(4,6,7));
+        g.fillRoundedRectangle((float)x,cy-3.f,(float)w,6.f,3.f);
+        g.setColour(gold);
+        g.drawLine((float)x+3.f,cy,juce::jlimit((float)x+3.f,(float)x+w-3.f,sliderPos),cy,2.f);
+        return;
+    }
     const float cx = x + w*.5f;
     g.setColour (juce::Colour::fromRGB(3,3,4));
     g.fillRoundedRectangle (cx-5,y+2,10,(float)h-5,3);
@@ -186,18 +195,24 @@ ThumpAudioProcessorEditor::ThumpAudioProcessorEditor (ThumpAudioProcessor& p)
     addKnob("xover","CROSSOVER Hz",310,173,72);
     addKnob("lowMix","LOW BLEND",555,173,72);
     addKnob("highMix","HIGH BLEND",795,173,72);
-    addSwitch("mono","MONO / CENTER",1022,157,146);
+    addSwitch("mono","LOW MONO ONLY",1022,157,146);
     addKnob("output","OUTPUT dB",1477,173,72);
 
     // LOW  // a spacious, independent instrument strip.
     addSwitch("lowSatOn","SAT ON",62,294,115);
     addKnob("lowDrive","DRIVE",119,407,75);
     addKnob("lowSatMix","WET / DRY",119,579,70);
+    addChoice("lowRoute", {"EQ > DRIVE > COMP", "EQ > COMP > DRIVE",
+                            "DRIVE > EQ > COMP", "DRIVE > COMP > EQ",
+                            "COMP > EQ > DRIVE", "COMP > DRIVE > EQ"}, 226,290,205,32);
     addEQ("low40G","low40Q","40 Hz",246,356);
     addEQ("low120G","low120Q","120 Hz",320,356);
     addEQ("low220G","low220Q","220 Hz",394,356);
     addSwitch("lowCompOn","COMP ON",468,295,105);
     addMode("lowMode",580,295,179,40);
+    fetRatioMenu[0] = addChoice ("lowFetRatio", {"FET 4:1","FET 8:1","FET 12:1","FET 20:1"},
+                                 554,447,155,28);
+    vcaRatioSlider[0] = addRatioSlider("lowVcaRatio",554,447,155,28);
     addKnob("lowThresh","THRESHOLD",519,514,72);
     addKnob("lowMakeup","MAKEUP",704,514,72);
     addKnob("lowAttack","FET ATTACK",520,615,63);
@@ -209,10 +224,16 @@ ThumpAudioProcessorEditor::ThumpAudioProcessorEditor (ThumpAudioProcessor& p)
     addSwitch("highSatOn","SAT ON",850,294,115);
     addKnob("highDrive","DISTORTION",906,407,75);
     addKnob("highSatMix","WET / DRY",906,579,70);
+    addChoice("highRoute", {"EQ > DRIVE > COMP", "EQ > COMP > DRIVE",
+                            "DRIVE > EQ > COMP", "DRIVE > COMP > EQ",
+                            "COMP > EQ > DRIVE", "COMP > DRIVE > EQ"}, 996,290,214,32);
     addEQ("high1500G","high1500Q","1.5 kHz",1050,356);
     addEQ("high5000G","high5000Q","5 kHz",1143,356);
     addSwitch("highCompOn","COMP ON",1228,295,105);
     addMode("highMode",1340,295,182,40);
+    fetRatioMenu[1] = addChoice("highFetRatio", {"FET 4:1","FET 8:1","FET 12:1","FET 20:1"},
+                                 1329,447,160,28);
+    vcaRatioSlider[1] = addRatioSlider("highVcaRatio",1329,447,160,28);
     addKnob("highThresh","THRESHOLD",1277,514,72);
     addKnob("highMakeup","MAKEUP",1475,514,72);
     addKnob("highAttack","FET ATTACK",1277,615,63);
@@ -288,12 +309,47 @@ void ThumpAudioProcessorEditor::addMode (const char* id, float x, float y, float
     positions.push_back ({ptr,{x,y,w,h}});
     modes.push_back (std::move (mode));
 }
+juce::ComboBox* ThumpAudioProcessorEditor::addChoice (const char* id,
+                            const juce::StringArray& options, float x,float y,float w,float h)
+{
+    auto menu=std::make_unique<juce::ComboBox>();
+    auto* ptr=menu.get();
+    for(int i=0;i<options.size();++i) ptr->addItem(options[i],i+1);
+    ptr->setTooltip(id);
+    addAndMakeVisible(*ptr);
+    positions.push_back({ptr,{x,y,w,h}});
+    dropdownBindings.push_back(std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>
+                                    (processor.apvts,id,*ptr));
+    dropdowns.push_back(std::move(menu));
+    return ptr;
+}
+juce::Slider* ThumpAudioProcessorEditor::addRatioSlider (const char* id,float x,float y,float w,float h)
+{
+    auto slider=std::make_unique<juce::Slider>();
+    auto* ptr=slider.get();
+    ptr->setSliderStyle(juce::Slider::LinearHorizontal);
+    ptr->setTextBoxStyle(juce::Slider::TextBoxRight,false,54,22);
+    ptr->setTooltip("VCA ratio: 1:1 through 120:1 (continuously adjustable)");
+    ptr->setDoubleClickReturnValue(true,4.0);
+    addAndMakeVisible(*ptr);
+    positions.push_back({ptr,{x,y,w,h}});
+    sliderBindings.push_back(std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>
+                                    (processor.apvts,id,*ptr));
+    sliders.push_back(std::move(slider));
+    return ptr;
+}
 void ThumpAudioProcessorEditor::timerCallback()
 {
     const bool lowFet  = processor.apvts.getRawParameterValue("lowMode")->load() < .5f;
     const bool highFet = processor.apvts.getRawParameterValue("highMode")->load() < .5f;
     for (auto* slider : {lowFetAttack, lowFetRelease}) if (slider) slider->setEnabled (lowFet);
     for (auto* slider : {highFetAttack, highFetRelease}) if (slider) slider->setEnabled (highFet);
+    for(int b=0;b<2;++b)
+    {
+        const int mode=(int)processor.apvts.getRawParameterValue(b==0?"lowMode":"highMode")->load();
+        if(fetRatioMenu[(size_t)b]) fetRatioMenu[(size_t)b]->setVisible(mode==0);
+        if(vcaRatioSlider[(size_t)b]) vcaRatioSlider[(size_t)b]->setVisible(mode==1);
+    }
     for (auto& m : modes) m->repaint();
     repaint();
 }

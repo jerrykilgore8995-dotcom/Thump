@@ -99,8 +99,8 @@ def check():
             assert 0<=s[id]<=1, (name,id)
         for id in ('low40G','low120G','low220G','high1500G','high5000G'):
             assert -12<=s[id]<=12, (name,id)
-    assert 'runCompressor (lo[0],lo[1],lowDetector' in CPP
-    assert 'runCompressor (hi[0],hi[1],highDetector' in CPP
+    assert 'runCompressor(lo[0],lo[1],lowDetector' in CPP
+    assert 'runCompressor(hi[0],hi[1],highDetector' in CPP
     assert 'addMode("lowMode"' in EDITOR and 'addMode("highMode"' in EDITOR
     assert 'addSwitch("lowCompOn"' in EDITOR and 'addSwitch("highCompOn"' in EDITOR
     assert 'juce::AudioBuffer<float> stereoWork' in HEADER
@@ -108,7 +108,7 @@ def check():
     print('PASS: FET 1176 published time endpoints, VCA 160 response targets')
     print('PASS: 20ms opto attack, two-stage 100ms / 2s return profile')
     print('PASS: 8 fully populated 39-parameter presets, valid modes and ranges')
-    print('PASS: 3-way selectors + bypass on both bands; stereo-safe 2x oversampling')
+    print('PASS: 3-way selectors + bypass on both bands; stereo-safe 4x oversampling')
     print('NOTE: no JUCE compiler or DAW test here; GitHub Action builds the VST3.')
 
 if __name__=='__main__':

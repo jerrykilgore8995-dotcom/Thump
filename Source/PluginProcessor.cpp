@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include <cmath>
+#include <utility>
 
 namespace thump
 {
@@ -84,6 +85,7 @@ void Band::reset() noexcept
     for (auto& f : eq) f.reset();
     for (auto& f : lowDivot) f.reset();
     tubePreHP.reset(); tubePostLP.reset(); lowSatDC.reset();
+    dryPower=wetPower=0; compGain=1;
 
 }
 
@@ -147,6 +149,12 @@ static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     fl ("lowAttack", "Low FET Attack ms", .02f, .8f, .001f, .2f);
     fl ("lowRelease", "Low FET Release ms", 50, 1100, 1, 250);
     fl ("lowMakeup", "Low Makeup", -12, 18, .1f, 2);
+    p.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID {"lowRoute",1},
+        "Low Processing Order", juce::StringArray {"EQ > Drive > Comp", "EQ > Comp > Drive",
+        "Drive > EQ > Comp", "Drive > Comp > EQ", "Comp > EQ > Drive", "Comp > Drive > EQ"}, 0));
+    p.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID {"lowFetRatio",1},
+        "Low FET Ratio", juce::StringArray {"4:1", "8:1", "12:1", "20:1"}, 0));
+    fl ("lowVcaRatio", "Low VCA Ratio", 1, 120, .1f, 4);
     fl ("lowMix", "Low Blend", 0, 1, .001f, 1);
     bl ("highSatOn", "High Tube Style Saturation", true);
     fl ("highDrive", "High Drive", 1, 10, .01f, 3.8f);
@@ -160,6 +168,12 @@ static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     fl ("highAttack", "High FET Attack ms", .02f, .8f, .001f, .2f);
     fl ("highRelease", "High FET Release ms", 50, 1100, 1, 180);
     fl ("highMakeup", "High Makeup", -12, 18, .1f, 1);
+    p.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID {"highRoute",1},
+        "High Processing Order", juce::StringArray {"EQ > Drive > Comp", "EQ > Comp > Drive",
+        "Drive > EQ > Comp", "Drive > Comp > EQ", "Comp > EQ > Drive", "Comp > Drive > EQ"}, 0));
+    p.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID {"highFetRatio",1},
+        "High FET Ratio", juce::StringArray {"4:1", "8:1", "12:1", "20:1"}, 0));
+    fl ("highVcaRatio", "High VCA Ratio", 1, 120, .1f, 4);
     fl ("highMix", "High Blend", 0, 1, .001f, .72f);
     bl ("limiterOn", "Final Limiter", true);
     fl ("limiterInput", "Limiter Drive", -12, 18, .1f, 4.0f);
@@ -187,7 +201,11 @@ bool ThumpAudioProcessor::isBusesLayoutSupported (const BusesLayout& l) const
 
 void ThumpAudioProcessor::prepareToPlay (double fs, int maxBlock)
 {
-    processingSampleRate = fs * 2.0;
+    processingSampleRate = fs * 4.0;
+    wetMatchCoeff = 1.f - std::exp (-1.f / (.035f * (float)processingSampleRate));
+    colorPoleCoeff = {{250.f,2200.f,7500.f}};
+    for (auto& c : colorPoleCoeff)
+        c = 1.f - std::exp (-2.f*thump::pi*c/(float)processingSampleRate);
     oversampling.initProcessing ((size_t) maxBlock);
     oversampling.reset();
     for (auto& b : bands) b.reset();
@@ -195,11 +213,11 @@ void ThumpAudioProcessor::prepareToPlay (double fs, int maxBlock)
     stereoWork.setSize (2, maxBlock, false, false, true);
     stereoWork.clear();
     for (auto& pair : highEq) for (auto& eq : pair) eq.reset();
-    lookaheadOS = juce::jmax (1, (int) std::ceil (fs * .001)) * 2;
+    lookaheadOS = juce::jmax (1, (int) std::ceil (fs * .001)) * 4;
     delayL.assign ((size_t) lookaheadOS, 0.0f);
     delayR.assign ((size_t) lookaheadOS, 0.0f);
     delayIndex = 0; detectorPeak = 0; glueGrDb = 0; limiterBlend = 1.f;
-    setLatencySamples (juce::roundToInt (oversampling.getLatencyInSamples()) + lookaheadOS / 2);
+    setLatencySamples (juce::roundToInt (oversampling.getLatencyInSamples()) + lookaheadOS / 4);
     updateFilters (readParams());
 }
 void ThumpAudioProcessor::releaseResources() {}
@@ -214,12 +232,16 @@ thump::State ThumpAudioProcessor::readParams() const noexcept
     p.eqLowGain[1]=x("low120G"); p.eqLowQ[1]=x("low120Q");
     p.eqLowGain[2]=x("low220G"); p.eqLowQ[2]=x("low220Q");
     p.lowCompOn=x("lowCompOn")>0.5f; p.lowMode=(int)x("lowMode");
+    p.lowRoute=(int)x("lowRoute"); p.lowFetRatio=(int)x("lowFetRatio");
+    p.lowVcaRatio=x("lowVcaRatio");
     p.lowThresh=x("lowThresh"); p.lowAttackMs=x("lowAttack");
     p.lowReleaseMs=x("lowRelease"); p.lowMakeupDb=x("lowMakeup"); p.lowMix=x("lowMix");
     p.highSatOn=x("highSatOn")>0.5f; p.highDrive=x("highDrive"); p.highSatMix=x("highSatMix");
     p.eqHighGain[0]=x("high1500G"); p.eqHighQ[0]=x("high1500Q");
     p.eqHighGain[1]=x("high5000G"); p.eqHighQ[1]=x("high5000Q");
     p.highCompOn=x("highCompOn")>0.5f; p.highMode=(int)x("highMode");
+    p.highRoute=(int)x("highRoute"); p.highFetRatio=(int)x("highFetRatio");
+    p.highVcaRatio=x("highVcaRatio");
     p.highThresh=x("highThresh"); p.highAttackMs=x("highAttack");
     p.highReleaseMs=x("highRelease"); p.highMakeupDb=x("highMakeup"); p.highMix=x("highMix");
     p.limiterOn=x("limiterOn")>0.5f; p.limiterInputDb=x("limiterInput");
@@ -257,50 +279,122 @@ void ThumpAudioProcessor::updateFilters (const thump::State& s) noexcept
     }
 }
 
+// Level compensator: slow, bounded RMS feedback prevents switching distortion
+// on (or moving Drive) from pushing the next EQ/compressor several dB harder.
+// 35ms tracks musical level without trying to linearize instantaneous clipping.
+float ThumpAudioProcessor::levelMatchedWet (float dry, float wet, thump::Band& b) noexcept
+{
+    const float a = wetMatchCoeff;
+    b.dryPower += a*(dry*dry - b.dryPower);
+    b.wetPower += a*(wet*wet - b.wetPower);
+    const float target = std::sqrt ((b.dryPower+1.e-9f)/(b.wetPower+1.e-9f));
+    b.compGain += a * (juce::jlimit (.15f, 6.f, target)-b.compGain);
+    return wet * b.compGain;
+}
+
 float ThumpAudioProcessor::runLowSat (float x, int channel, const thump::State& s) noexcept
 {
-    // This parallel asymmetric triode/tape-like shaper retains the dry bass
-    // fundamental while generating considerably stronger K2/K3 harmonics.
-    // Previous implementation was too weak at normal -18dBFS bass levels.
-    const float d = 2.45f + 1.55f*s.lowDrive; // 4..18: substantive nonlinearity
-    const float bias = .10f + .012f*s.lowDrive;
-    const float offset = std::tanh (bias);
-    const float linearGain = d*(1.f-offset*offset);
-    const float shaped = (std::tanh (d*x + bias)-offset)/linearGain;
-    // AC-couple only the difference; wet/dry timing of the fundamental stays
-    // aligned and the 18 Hz blocker prevents an asymmetry-driven DC offset.
-    const float residual = bands[(size_t)channel].lowSatDC.run (shaped-x);
-    const float wet = s.lowSatOn ? juce::jlimit (0.f, 1.f, 1.85f*s.lowSatMix) : 0.f;
-    return x + wet * residual;
+    if (!s.lowSatOn) return x;
+    // Asymmetric biased high-gain nonlinearity: unlike the old 2% residual,
+    // at Drive 10 this generates strong K2 and K3 (about 20-30% THD for a
+    // -15dBFS bass sine with a full wet path); AC-couple residual only.
+    const float t = juce::jlimit (0.f,1.f,(s.lowDrive-1.f)/9.f);
+    const float k = .3f + 2.7f*t*t;
+    const float bias = .15f + .32f*t;
+    const float reference = .18f;
+    // Linearized at Drive 1, normalized with a fundamental-level calibration
+    // fit rather than simple peak-based makeup gain.
+    const float normalizer = juce::jmax (.12f,
+        k*(1.f-.16f*bias) / (1.f+.34f*k*k));
+    const float z = juce::jlimit(-5.f,5.f,x/reference);
+    const float shaped = reference * (std::tanh(k*z + bias)-std::tanh(bias))/normalizer;
+    auto& b=bands[(size_t)channel];
+    const float residual=b.lowSatDC.run(shaped-x);
+    const float wet=levelMatchedWet(x,x+residual,b);
+    return x + s.lowSatMix*(wet-x);
 }
 float ThumpAudioProcessor::runHighSat (float x, int channel, const thump::State& s) noexcept
 {
-    auto& band=bands[(size_t)channel];
-    // Tube Screamer-inspired mid-forward drive path, NOT a circuit-exact TS808:
-    // 1) Cut excessive lows before clipping (bass fundamental remains on LOW path).
-    // 2) Gain into a soft anti-parallel-diode-like clipping knee.
-    // 3) Tone LPF around 5.2 kHz; wet blend of FULL clipped signal, NOT a small
-    //    waveshaping residual that cancels against the original dry channel.
-    // Range ~10 to 42 dB pre-drive: audible even on modest 10-40mV high-band inputs.
-    const float preEmphasis=band.tubePreHP.run(x);
-    const float driveDb=5.8f + 3.6f*s.highDrive;
-    const float drive=thump::dbToGain(driveDb);
-    const float amp=preEmphasis * drive;
-    // Twin silicon diode soft clip: rounded knee, asymmetric small even component.
-    const float d1=std::tanh(amp*1.45f + .11f)-std::tanh(.11f);
-    const float d2=std::tanh(amp*1.45f - .05f)-std::tanh(-.05f);
-    const float clipped=.58f*d1 + .42f*d2;
-    const float bandLimited=band.tubePostLP.run(clipped);
-    // Moderate compensation stops higher drive from simply becoming louder;
-    // the nonlinear harmonic density nonetheless rises sharply with drive.
-    const float outputTrim=juce::jmap(s.highDrive,1.f,10.f,.52f,.31f);
-    const float distorted=bandLimited*outputTrim;
-    const float wet=s.highSatOn ? s.highSatMix : 0.f;
-    return x*(1.f-wet) + distorted*wet;
+    if (!s.highSatOn) return x;
+    auto& b=bands[(size_t)channel];
+    // TS808-inspired symmetrical feedback clipping. 720Hz high-pass in the
+    // driven branch + ~5kHz tone rolloff keeps the midrange forward.
+    const float t=juce::jlimit(0.f,1.f,(s.highDrive-1.f)/9.f);
+    const float k=.35f + 4.1f*t*t;
+    const float reference=.18f;
+    const float input=b.tubePreHP.run(x);
+    const float z=juce::jlimit(-5.f,5.f,input/reference);
+    const float normalizer=juce::jmax(.12f,k/(1.f+.32f*k*k));
+    const float clipped=reference*std::tanh(k*z)/normalizer;
+    const float wet=b.tubePostLP.run(clipped);
+    // We correct the output RMS, not only the peak. The mix is a true blend
+    // between unclipped high and fully clipped high, not 2% harmonic injection.
+    const float matched=levelMatchedWet(x,wet,b);
+    return x + s.highSatMix*(matched-x);
 }
+
+// Explicit, frequency-dependent compressor coloration. Four prefiltered source
+// bands generate ONLY a small parallel nonlinear residual. The processed audio
+// itself remains on its original unfiltered path (no additional all-pass).
+float ThumpAudioProcessor::compressorColor (float x, float grDb, int mode,
+                                           thump::ColorChannel& state) noexcept
+{
+    const float fs=(float)processingSampleRate;
+    state.lp250 += colorPoleCoeff[0]*(x-state.lp250);
+    state.lp2200 += colorPoleCoeff[1]*(x-state.lp2200);
+    state.lp7500 += colorPoleCoeff[2]*(x-state.lp7500);
+    const float low=state.lp250;
+    const float lowMid=state.lp2200;
+    const float high=state.lp7500;
+    const float segments[4] {low,lowMid-low,high-lowMid,x-high};
+    // Gain-reduction-scaled THD. Opto harmonic amplitudes follow the supplied
+    // -dBc reference ladders at 100, 1k, 5k, 10k respectively, at 20dB GR.
+    // Actual frequencies between anchors and polyphonic signals are approximate.
+    static constexpr float optoLinear[4][4] = {
+        {0.0001584893f, 0.0000398107f, 0.0000707946f, 0.0000010000f},
+        {0.0002818383f, 0.0000630957f, 0.0001258925f, 0.0000251189f},
+        {0.0000398107f, 0.0000017783f, 0.0000005623f, 0.0000001778f},
+        {0.0000112202f, 0.0000005623f, 0.0000001778f, 0.0000000562f}
+    };
+    const float fraction=juce::jlimit(0.f,1.f,grDb/20.f);
+    if (fraction < 1.e-6f) return x;
+    float residual=0.f;
+    for(int i=0;i<4;++i)
+    {
+        const float z=juce::jlimit(-1.2f,1.2f,segments[i]/.18f);
+        const float z2=z*z, z3=z2*z, z4=z2*z2, z5=z4*z;
+        const float harmonics[4] {2.f*z2,4.f*z3-3.f*z,8.f*z4-8.f*z2,16.f*z5-20.f*z3+5.f*z};
+        float coeff[4] {};
+        if (mode==2)
+            for(int n=0;n<4;++n) coeff[n]=optoLinear[i][n];
+        else if (mode==1)
+        {
+            // THAT 2181 datasheet THD is much lower. This is intentionally
+            // enhanced dbx-style VCA coloring, not a claim of 2181 accuracy.
+            const float lowWeight = i==0?1.0f:i==1?.60f:i==2?.24f:.10f;
+            coeff[0]=.0025f*lowWeight;
+            coeff[1]=.0180f*lowWeight;
+            coeff[2]=.0012f*lowWeight;
+        }
+        else
+        {
+            // FET/transformer-inspired, stronger low-mid K2/K3, weaker top.
+            const float lowWeight=i==0?1.0f:i==1?.65f:i==2?.30f:.15f;
+            coeff[0]=.0040f*lowWeight;
+            coeff[1]=.0045f*lowWeight;
+            coeff[2]=.0015f*lowWeight;
+        }
+        for(int n=0;n<4;++n) residual += .18f * coeff[n] * harmonics[n] * fraction;
+    }
+    // DC block ONLY on the tiny generated harmonic path.
+    const float dcCoeff=std::exp(-2.f*thump::pi*14.f/fs);
+    state.dc=dcCoeff*state.dc+(1.f-dcCoeff)*residual;
+    return x+residual-state.dc;
+}
+
 void ThumpAudioProcessor::runCompressor (float& l, float& r, thump::Detector& d,
                                         bool enabled, int mode, float threshold,
-                                        float attackMs, float releaseMs, float makeupDb) noexcept
+                                        float attackMs, float releaseMs, float makeupDb, int fetRatio, float vcaRatio) noexcept
 {
     const float fs = (float) processingSampleRate;
     mode = juce::jlimit (0, 2, mode);
@@ -320,12 +414,19 @@ void ThumpAudioProcessor::runCompressor (float& l, float& r, thump::Detector& d,
         d.rms2 = c * d.rms2 + (1.0f - c) * peak * peak;
         level = std::sqrt (juce::jmax (d.rms2, 0.0f));
     }
-    const float over = thump::gainToDb (level) - threshold;
+    // UREI 1176 threshold changes with ratio selection in the original unit.
+    // Relative offsets model the published -30/-26/-25/-24 dB knee positions.
+    static constexpr float fetKneeShift[4] {0.f,4.f,5.f,6.f};
+    const float adjustedThreshold = mode==0
+        ? threshold+fetKneeShift[juce::jlimit(0,3,fetRatio)] : threshold;
+    const float over = thump::gainToDb (level) - adjustedThreshold;
     float above = juce::jmax (0.0f, over);
     if (mode == 1) // dbx-style soft knee, 6dB span
         above = over <= -3.0f ? 0.0f : (over >= 3.0f ? over
                                   : (over + 3.0f) * (over + 3.0f) / 12.0f);
-    const float ratio = (mode == 2 ? 3.0f : 4.0f); // FET 4:1, VCA 4:1, OPTO 3:1
+    static constexpr float ratios[4] {4.f,8.f,12.f,20.f};
+    const float ratio = mode==0 ? ratios[juce::jlimit(0,3,fetRatio)]
+                                   : (mode==1 ? juce::jlimit(1.f,120.f,vcaRatio) : 3.f);
     const float goal = above * (1.0f - 1.0f / ratio);
     if (mode == 0) // FET: measured 1176 A/R limits, knob sets time; fastest clockwise.
     {
@@ -376,21 +477,11 @@ void ThumpAudioProcessor::runCompressor (float& l, float& r, thump::Detector& d,
     // 8ms bypass ramp prevents clicks; processing state continues while bypassed.
     const float bypassCoeff = std::exp (-1.0f / (.008f * fs));
     d.wetBlend = bypassCoeff * d.wetBlend + (1.0f - bypassCoeff) * (enabled ? 1.0f : 0.0f);
-    float gain = thump::dbToGain (-d.grDb + makeupDb);
-    if (mode == 0)
-    {
-        // Restrained FET color: a gentle odd-harmonic contribution in the wet path.
-        const float color = .04f * juce::jlimit (0.0f, 1.0f, d.grDb / 10.0f);
-        const float processedL = (l * gain) * (1.0f-color) + std::tanh (l*gain*1.7f) / 1.7f * color;
-        const float processedR = (r * gain) * (1.0f-color) + std::tanh (r*gain*1.7f) / 1.7f * color;
-        l += d.wetBlend * (processedL - l);
-        r += d.wetBlend * (processedR - r);
-    }
-    else
-    {
-        const float effectiveGain = 1.0f + d.wetBlend * (gain - 1.0f);
-        l *= effectiveGain; r *= effectiveGain;
-    }
+    const float gain = thump::dbToGain (-d.grDb + makeupDb);
+    const float processedL = compressorColor(l*gain,d.grDb,mode,d.coloration[0]);
+    const float processedR = compressorColor(r*gain,d.grDb,mode,d.coloration[1]);
+    l += d.wetBlend * (processedL - l);
+    r += d.wetBlend * (processedR - r);
 }
 
 void ThumpAudioProcessor::processBlock (juce::AudioBuffer<float>& audio, juce::MidiBuffer& midi)
@@ -420,26 +511,48 @@ void ThumpAudioProcessor::processBlock (juce::AudioBuffer<float>& audio, juce::M
     const int count = (int) up.getNumSamples();
     float* left = up.getChannelPointer (0);
     float* right = up.getChannelPointer (1);
+    // All six orders can be selected independently, per band, using automatable
+    // parameter choices. No added path delays; branch summation is sample-aligned.
+    static constexpr int orders[6][3] {
+        {0,1,2}, {0,2,1}, {1,0,2}, {1,2,0}, {2,0,1}, {2,1,0}
+    }; // 0 EQ, 1 DRIVE, 2 COMP
     for (int i=0; i<count; ++i)
     {
         float lo[2], hi[2];
         const float in[2] {left[i],right[i]};
         for (int ch=0; ch<2; ++ch)
         {
-            auto& b = bands[(size_t)ch];
-            lo[ch] = b.lp[1].run (b.lp[0].run (in[ch]));
-            hi[ch] = b.hp[1].run (b.hp[0].run (in[ch]));
-            // LR4 low and high have matching phase at crossover and sum to unity MAGNITUDE.
-            for (int k=0; k<3; ++k)
-                lo[ch] = b.lowDivot[k].run (b.eq[k].run (lo[ch]));
-            hi[ch] = highEq[(size_t)ch][1].run (highEq[(size_t)ch][0].run (hi[ch]));
-            lo[ch] = runLowSat (lo[ch],ch,s);
-            hi[ch] = runHighSat (hi[ch],ch,s);
+            auto& b=bands[(size_t)ch];
+            lo[ch]=b.lp[1].run(b.lp[0].run(in[ch]));
+            hi[ch]=b.hp[1].run(b.hp[0].run(in[ch]));
         }
-        runCompressor (lo[0],lo[1],lowDetector,s.lowCompOn,s.lowMode,
-                       s.lowThresh,s.lowAttackMs,s.lowReleaseMs,s.lowMakeupDb);
-        runCompressor (hi[0],hi[1],highDetector,s.highCompOn,s.highMode,
-                       s.highThresh,s.highAttackMs,s.highReleaseMs,s.highMakeupDb);
+        // MONOIZE controls ONLY the low band. High stereo content is untouched.
+        if(s.mono) lo[0]=lo[1]=.5f*(lo[0]+lo[1]);
+        const auto routeLow=orders[juce::jlimit(0,5,s.lowRoute)];
+        const auto routeHigh=orders[juce::jlimit(0,5,s.highRoute)];
+        for(int step=0;step<3;++step)
+        {
+            const int lowStage=routeLow[step], highStage=routeHigh[step];
+            if(lowStage==0)
+                for(int ch=0;ch<2;++ch)
+                    for(int k=0;k<3;++k)
+                        lo[ch]=bands[(size_t)ch].lowDivot[k].run(bands[(size_t)ch].eq[k].run(lo[ch]));
+            else if(lowStage==1)
+                for(int ch=0;ch<2;++ch) lo[ch]=runLowSat(lo[ch],ch,s);
+            else
+                runCompressor(lo[0],lo[1],lowDetector,s.lowCompOn,s.lowMode,
+                              s.lowThresh,s.lowAttackMs,s.lowReleaseMs,s.lowMakeupDb,
+                              s.lowFetRatio,s.lowVcaRatio);
+            if(highStage==0)
+                for(int ch=0;ch<2;++ch)
+                    hi[ch]=highEq[(size_t)ch][1].run(highEq[(size_t)ch][0].run(hi[ch]));
+            else if(highStage==1)
+                for(int ch=0;ch<2;++ch) hi[ch]=runHighSat(hi[ch],ch,s);
+            else
+                runCompressor(hi[0],hi[1],highDetector,s.highCompOn,s.highMode,
+                              s.highThresh,s.highAttackMs,s.highReleaseMs,s.highMakeupDb,
+                              s.highFetRatio,s.highVcaRatio);
+        }
         left[i] = lo[0]*s.lowMix + hi[0]*s.highMix;
         right[i] = lo[1]*s.lowMix + hi[1]*s.highMix;
     }
@@ -485,7 +598,7 @@ void ThumpAudioProcessor::processBlock (juce::AudioBuffer<float>& audio, juce::M
         right[i] = delayedB * appliedGain;
         maxLimiterReduction = juce::jmax (maxLimiterReduction,
             -thump::gainToDb (juce::jmax (appliedGain,1.0e-7f)));
-        if (s.mono) left[i] = right[i] = .5f*(left[i]+right[i]);
+
     }
     oversampling.processSamplesDown (work);
     const float post = thump::dbToGain (s.outputDb);
@@ -513,6 +626,13 @@ void ThumpAudioProcessor::applyFactoryPreset (int index)
             const auto value=param->convertTo0to1(p.values[i]);
             param->beginChangeGesture(); param->setValueNotifyingHost(value); param->endChangeGesture();
         }
+    // Legacy presets predate routing and ratio choices. Reset these to calibrated
+    // defaults when a FACTORY preset is selected, while keeping old session recall.
+    for (const auto& item : std::array<std::pair<const char*, float>,6> {{
+        {"lowRoute",0.f},{"highRoute",0.f},{"lowFetRatio",0.f},
+        {"highFetRatio",0.f},{"lowVcaRatio",4.f},{"highVcaRatio",4.f}}})
+        if (auto* param=apvts.getParameter(item.first))
+            param->setValueNotifyingHost(param->convertTo0to1(item.second));
     selectedPreset.store(index);
 }
 void ThumpAudioProcessor::getStateInformation (juce::MemoryBlock& dest)
