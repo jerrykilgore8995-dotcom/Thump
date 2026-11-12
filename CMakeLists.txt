@@ -33,3 +33,14 @@ target_compile_definitions(Thump PUBLIC JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
 target_link_libraries(Thump PRIVATE juce::juce_audio_utils juce::juce_dsp
     juce::juce_recommended_config_flags juce::juce_recommended_lto_flags
     juce::juce_recommended_warning_flags)
+
+# Offline measurement executable uses the exact THUMP processor DSP and editor code.
+# It does not modify the production plugin or its parameter names.
+juce_add_console_app(ThumpBench PRODUCT_NAME "THUMP DSP Bench")
+target_sources(ThumpBench PRIVATE
+    tests/ThumpBench.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp)
+target_include_directories(ThumpBench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(ThumpBench PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
+    JUCE_VST3_CAN_REPLACE_VST2=0)
+target_link_libraries(ThumpBench PRIVATE juce::juce_audio_utils juce::juce_dsp
+    juce::juce_recommended_config_flags juce::juce_recommended_lto_flags)
