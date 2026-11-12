@@ -20,7 +20,7 @@ for perm in ('{0,1,2}','{0,2,1}','{1,0,2}','{1,2,0}','{2,0,1}','{2,1,0}'):
 assert 'if(s.mono) lo[0]=lo[1]=' in s
 assert 'if (s.mono) left[i]' not in s
 assert 'processingSampleRate = fs * 4.0' in s
-assert 'left[i] = (lo[0]*s.lowMix + hi[0]*s.highMix) * post;' in s
+assert 'left[i] = (lo[0]*s.lowMix + hi[0]*s.highMix) * smoothOutputGain;' in s
 assert 'd[i] = src[i];' in s
 assert 'oversampling {2, 2' in h
 
