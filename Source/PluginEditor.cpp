@@ -178,9 +178,9 @@ ThumpAudioProcessorEditor::ThumpAudioProcessorEditor (ThumpAudioProcessor& p)
 {
     setLookAndFeel (&vintage);
     setResizable(true,true);
-    setResizeLimits (1200,705,2000,1175);
-    if (auto* c = getConstrainer()) c->setFixedAspectRatio (1600.0 / 940.0);
-    setSize (1520,893); // Taller proportional faceplate with clear separation between controls and value captions.
+    setResizeLimits (1200,788,2000,1312);
+    if (auto* c = getConstrainer()) c->setFixedAspectRatio (1600.0 / 1050.0);
+    setSize (1360,893); // Fits 1080p screens; scalable and non-overlapping.
     presetMenu.setLookAndFeel(&vintage);
     presetMenu.addItem("Init / Manual",1);
     for (int i=0;i<8;++i) presetMenu.addItem(thump::factoryPresets()[(size_t)i].name,i+2);
@@ -197,6 +197,9 @@ ThumpAudioProcessorEditor::ThumpAudioProcessorEditor (ThumpAudioProcessor& p)
     addKnob("lowMix","LOW BLEND",555,173,72);
     addKnob("highMix","HIGH BLEND",795,173,72);
     addSwitch("mono","LOW MONO ONLY",1022,157,146);
+    addKnob("hpfHz","HPF Hz",1230,171,60);
+    addTag("HPF SLOPE",1290,144,125,18,11);
+    addChoice("hpfSlope", {"OFF","12 dB/oct","24 dB/oct"},1290,168,125,32);
     addKnob("output","OUTPUT dB",1477,173,72);
 
     // LOW  // a spacious, independent instrument strip.
@@ -212,8 +215,8 @@ ThumpAudioProcessorEditor::ThumpAudioProcessorEditor (ThumpAudioProcessor& p)
     addSwitch("lowCompOn","COMP ON",468,295,105);
     addMode("lowMode",580,295,179,40);
     fetRatioMenu[0] = addChoice ("lowFetRatio", {"FET 4:1","FET 8:1","FET 12:1","FET 20:1"},
-                                 554,447,155,28);
-    vcaRatioSlider[0] = addRatioSlider("lowVcaRatio",554,447,155,28);
+                                 554,454,155,28);
+    vcaRatioSlider[0] = addRatioSlider("lowVcaRatio",554,454,155,28);
     addKnob("lowThresh","THRESHOLD",519,545,72);
     addKnob("lowMakeup","MAKEUP",704,545,72);
     addKnob("lowAttack","FET ATTACK",520,690,63);
@@ -224,17 +227,21 @@ ThumpAudioProcessorEditor::ThumpAudioProcessorEditor (ThumpAudioProcessor& p)
     // HIGH // separate grind and high-band compression, equally sized GR meter.
     addSwitch("highSatOn","SAT ON",850,294,115);
     addKnob("highDrive","DISTORTION",906,407,75);
+    addTag("DRIVE TYPE",840,488,130,18,11);
+    addChoice("highDriveType",{"TS GRIND","AMP GRIND","FUZZ CLANK"},840,512,130,33);
     addKnob("highSatMix","WET / DRY",906,659,70);
     addChoice("highRoute", {"EQ > DRIVE > COMP", "EQ > COMP > DRIVE",
                             "DRIVE > EQ > COMP", "DRIVE > COMP > EQ",
                             "COMP > EQ > DRIVE", "COMP > DRIVE > EQ"}, 996,290,214,32);
-    addEQ("high1500G","high1500Q","1.5 kHz",1050,356);
-    addEQ("high5000G","high5000Q","5 kHz",1143,356);
+    addEQ("highMidG","highMidQ","MID",1024,356);
+    addEQ("high1500G","high1500Q","1.5 kHz",1100,356);
+    addEQ("high5000G","high5000Q","5 kHz",1176,356);
+    addHorizontal("highMidHz","MID FREQ Hz",1015,582,186,27,800.f);
     addSwitch("highCompOn","COMP ON",1228,295,105);
     addMode("highMode",1340,295,182,40);
     fetRatioMenu[1] = addChoice("highFetRatio", {"FET 4:1","FET 8:1","FET 12:1","FET 20:1"},
-                                 1329,447,160,28);
-    vcaRatioSlider[1] = addRatioSlider("highVcaRatio",1329,447,160,28);
+                                 1329,454,160,28);
+    vcaRatioSlider[1] = addRatioSlider("highVcaRatio",1329,454,160,28);
     addKnob("highThresh","THRESHOLD",1277,545,72);
     addKnob("highMakeup","MAKEUP",1475,545,72);
     addKnob("highAttack","FET ATTACK",1277,690,63);
@@ -248,6 +255,11 @@ ThumpAudioProcessorEditor::ThumpAudioProcessorEditor (ThumpAudioProcessor& p)
     addKnob("limiterCeiling","CEILING",522,854,70);
     addKnob("limiterRelease","RELEASE",716,854,70);
     addKnob("limiterMix","WET / DRY",906,854,70);
+    addSwitch("glueOn","GLUE ON",1010,835,131);
+    addSwitch("dynOn","DYNAMIC EQ",65,965,145);
+    addKnob("dynHz","FREQ Hz",355,978,56);
+    addKnob("dynThresh","THRESHOLD",590,978,56);
+    addKnob("dynCut","MAX CUT dB",830,978,56);
     startTimerHz(25);
 }
 ThumpAudioProcessorEditor::~ThumpAudioProcessorEditor()
@@ -282,7 +294,7 @@ void ThumpAudioProcessorEditor::addEQ(const char* idG,const char* idQ,const char
     addAndMakeVisible(*ptr);positions.push_back({ptr,{x-28,yTop,56,205}});
     sliderBindings.push_back(std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.apvts,idG,*ptr));
     sliders.push_back(std::move(slider));
-    addTag(label,x-42,yTop-31,84,20,13);
+    addTag(label,x-35,yTop-31,70,20,11.5f);
     auto q=std::make_unique<juce::Slider>();auto* qp=q.get();
     qp->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
     qp->setRotaryParameters(juce::degreesToRadians(225.f),juce::degreesToRadians(495.f),true);
@@ -339,6 +351,23 @@ juce::Slider* ThumpAudioProcessorEditor::addRatioSlider (const char* id,float x,
     sliders.push_back(std::move(slider));
     return ptr;
 }
+juce::Slider* ThumpAudioProcessorEditor::addHorizontal (
+    const char* id,const char* label,float x,float y,float w,float h,float resetValue)
+{
+    auto slider=std::make_unique<juce::Slider>();
+    auto* ptr=slider.get();
+    ptr->setSliderStyle(juce::Slider::LinearHorizontal);
+    ptr->setTextBoxStyle(juce::Slider::TextBoxRight,false,64,20);
+    ptr->setTooltip(label);
+    ptr->setDoubleClickReturnValue(true,resetValue);
+    addAndMakeVisible(*ptr);
+    positions.push_back({ptr,{x,y,w,h}});
+    addTag(label,x,y-21,w,17,11.f);
+    sliderBindings.push_back(std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>
+        (processor.apvts,id,*ptr));
+    sliders.push_back(std::move(slider));
+    return ptr;
+}
 void ThumpAudioProcessorEditor::timerCallback()
 {
     const bool lowFet  = processor.apvts.getRawParameterValue("lowMode")->load() < .5f;
@@ -356,7 +385,7 @@ void ThumpAudioProcessorEditor::timerCallback()
 }
 void ThumpAudioProcessorEditor::resized()
 {
-    const float sx=getWidth()/1600.f, sy=getHeight()/940.f;
+    const float sx=getWidth()/1600.f, sy=getHeight()/1050.f;
     for(const auto& p:positions) p.component->setBounds (juce::Rectangle<int>(
         juce::roundToInt(p.rect.getX()*sx),juce::roundToInt(p.rect.getY()*sy),
         juce::roundToInt(p.rect.getWidth()*sx),juce::roundToInt(p.rect.getHeight()*sy)));
@@ -429,23 +458,23 @@ void ThumpAudioProcessorEditor::drawVU(juce::Graphics& g,juce::Rectangle<float> 
 void ThumpAudioProcessorEditor::paint(juce::Graphics& g)
 {
     g.fillAll(juce::Colour::fromRGB(8,9,10));
-    g.addTransform(juce::AffineTransform::scale(getWidth()/1600.f,getHeight()/940.f));
+    g.addTransform(juce::AffineTransform::scale(getWidth()/1600.f,getHeight()/1050.f));
     // Realistic industrial 19-inch faceplate: anodized black aluminium and narrow brass edges.
     g.setGradientFill(juce::ColourGradient(juce::Colour::fromRGB(105,83,52),0,0,
                         juce::Colour::fromRGB(43,38,31),1600,860,false));
-    g.fillRoundedRectangle(5,5,1590,930,9.f);
+    g.fillRoundedRectangle(5,5,1590,1040,9.f);
     g.setColour(juce::Colour::fromRGB(8,10,12));
-    g.fillRoundedRectangle(13,13,1574,914,6.f);
+    g.fillRoundedRectangle(13,13,1574,1024,6.f);
     g.setGradientFill(juce::ColourGradient(juce::Colour::fromRGB(37,40,42),0,15,
-                       juce::Colour::fromRGB(20,22,24),0,924,false));
-    g.fillRoundedRectangle(17,17,1566,906,5.f);
+                       juce::Colour::fromRGB(20,22,24),0,1034,false));
+    g.fillRoundedRectangle(17,17,1566,1016,5.f);
     // A very restrained brushed finish. No shiny cartoony borders.
-    for(int y=20;y<922;y+=3)
+    for(int y=20;y<1032;y+=3)
     {
         g.setColour(juce::Colours::white.withAlpha((y%9==2)?.018f:.008f));
         g.drawHorizontalLine(y,25.f,1575.f);
     }
-    for(auto pt:{juce::Point<float>{25,26},{1573,26},{25,915},{1573,915}}) drawScrew(g,pt.x,pt.y);
+    for(auto pt:{juce::Point<float>{25,26},{1573,26},{25,1030},{1573,1030}}) drawScrew(g,pt.x,pt.y);
     g.setColour(juce::Colour::fromRGB(18,20,21));g.fillRoundedRectangle(38,29,1524,65,3.f);
     g.setColour(juce::Colour::fromRGB(98,79,54));g.drawRoundedRectangle(38,29,1524,65,3.f,1.f);
     g.setColour(juce::Colour::fromRGB(224,192,132));
@@ -482,7 +511,9 @@ void ThumpAudioProcessorEditor::paint(juce::Graphics& g)
     g.setColour(juce::Colour::fromRGB(85,75,61));
     g.drawLine(799,255,799,754,1.f);
     drawPanel(g,{36,787,1528,128},"",true);
-    minor("GLUE LIMITER",{51,792,151,18});
+    drawPanel(g,{36,923,1528,109},"",true);
+    minor("FINAL LIMITER",{51,792,151,18});
+    minor("DYNAMIC BASS EQ / 30 ms ATTACK · 150 ms RELEASE",{50,927,525,18});
     drawVU(g,{1184,817,338,77},"LIMITER  •  GR",processor.limitReduction.load(),true);
     for(const auto& tag:tags)
     {
