@@ -46,7 +46,7 @@ private:
     juce::ComboBox presetMenu;
     std::vector<std::unique_ptr<juce::ComboBox>> dropdowns;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> dropdownBindings;
-    std::array<juce::ComboBox*, 2> fetRatioMenu {nullptr,nullptr};
+    std::array<juce::Slider*, 2> fetRatioSlider {nullptr,nullptr};
     std::array<juce::Slider*, 2> vcaRatioSlider {nullptr,nullptr};
     std::vector<std::unique_ptr<juce::Slider>> sliders;
     std::vector<std::unique_ptr<juce::ToggleButton>> switches;
@@ -66,6 +66,8 @@ private:
     juce::ComboBox* addChoice (const char* id, const juce::StringArray& options,
                               float x, float y, float w, float h);
     juce::Slider* addRatioSlider (const char* id,float x,float y,float w,float h);
+    juce::Slider* addFetRatioSlider (const char* id,float x,float y,float w,float h);
+    void updateRatioVisibility();
     juce::Slider* addHorizontal (const char* id, const char* label,
                                  float x,float y,float w,float h,float resetValue);
     void addTag (juce::String text, float x, float y, float w, float h=18, float size=13);

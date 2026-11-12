@@ -72,11 +72,24 @@ void ThumpLookAndFeel::drawLinearSlider (juce::Graphics& g, int x,int y,int w,in
 {
     if (sliderStyle == juce::Slider::LinearHorizontal || sliderStyle == juce::Slider::LinearBar)
     {
+        // Recessed metal track with a clear, physical gold thumb, not a black line.
         const float cy=y+h*.5f;
-        g.setColour(juce::Colour::fromRGB(4,6,7));
-        g.fillRoundedRectangle((float)x,cy-3.f,(float)w,6.f,3.f);
-        g.setColour(gold);
-        g.drawLine((float)x+3.f,cy,juce::jlimit((float)x+3.f,(float)x+w-3.f,sliderPos),cy,2.f);
+        const float left=(float)x+9.f, right=(float)x+w-9.f;
+        const float px=juce::jlimit(left,right,sliderPos);
+        g.setColour(juce::Colours::black.withAlpha(.9f));
+        g.fillRoundedRectangle((float)x+4.f,cy-5.f,(float)w-8.f,10.f,3.f);
+        g.setColour(juce::Colour::fromRGB(98,85,66));
+        g.drawRoundedRectangle((float)x+4.5f,cy-4.5f,(float)w-9.f,9.f,3.f,1.f);
+        g.setColour(juce::Colour::fromRGB(163,126,72));
+        g.fillRoundedRectangle(left,cy-1.f,juce::jmax(0.f,px-left),2.f,1.f);
+        const auto thumb=juce::Rectangle<float>(px-7.f,cy-10.f,14.f,20.f);
+        g.setColour(juce::Colours::black.withAlpha(.8f));
+        g.fillRoundedRectangle(thumb.translated(1.f,1.f),3.f);
+        g.setGradientFill(juce::ColourGradient(lightGold,thumb.getX(),thumb.getY(),
+            deepGold,thumb.getRight(),thumb.getBottom(),false));
+        g.fillRoundedRectangle(thumb,3.f);
+        g.setColour(juce::Colour::fromRGB(243,226,181));
+        g.drawLine(px,cy-6.f,px,cy+6.f,1.2f);
         return;
     }
     const float cx = x + w*.5f;
@@ -214,8 +227,7 @@ ThumpAudioProcessorEditor::ThumpAudioProcessorEditor (ThumpAudioProcessor& p)
     addEQ("low220G","low220Q","220 Hz",394,356);
     addSwitch("lowCompOn","COMP ON",468,295,105);
     addMode("lowMode",580,295,179,40);
-    fetRatioMenu[0] = addChoice ("lowFetRatio", {"FET 4:1","FET 8:1","FET 12:1","FET 20:1"},
-                                 554,454,155,28);
+    fetRatioSlider[0] = addFetRatioSlider("lowFetRatio",554,454,155,28);
     vcaRatioSlider[0] = addRatioSlider("lowVcaRatio",554,454,155,28);
     addKnob("lowThresh","THRESHOLD",519,545,72);
     addKnob("lowMakeup","MAKEUP",704,545,72);
@@ -239,8 +251,7 @@ ThumpAudioProcessorEditor::ThumpAudioProcessorEditor (ThumpAudioProcessor& p)
     addHorizontal("highMidHz","MID FREQ Hz",1015,590,186,27,800.f);
     addSwitch("highCompOn","COMP ON",1228,295,105);
     addMode("highMode",1340,295,182,40);
-    fetRatioMenu[1] = addChoice("highFetRatio", {"FET 4:1","FET 8:1","FET 12:1","FET 20:1"},
-                                 1329,454,160,28);
+    fetRatioSlider[1] = addFetRatioSlider("highFetRatio",1329,454,160,28);
     vcaRatioSlider[1] = addRatioSlider("highVcaRatio",1329,454,160,28);
     addKnob("highThresh","THRESHOLD",1277,545,72);
     addKnob("highMakeup","MAKEUP",1475,545,72);
@@ -260,6 +271,7 @@ ThumpAudioProcessorEditor::ThumpAudioProcessorEditor (ThumpAudioProcessor& p)
     addKnob("dynHz","FREQ Hz",355,978,56);
     addKnob("dynThresh","THRESHOLD",590,978,56);
     addKnob("dynCut","MAX CUT dB",830,978,56);
+    updateRatioVisibility(); // Start in FET/VCA/Opto state before first paint.
     startTimerHz(25);
 }
 ThumpAudioProcessorEditor::~ThumpAudioProcessorEditor()
@@ -341,13 +353,56 @@ juce::Slider* ThumpAudioProcessorEditor::addRatioSlider (const char* id,float x,
     auto slider=std::make_unique<juce::Slider>();
     auto* ptr=slider.get();
     ptr->setSliderStyle(juce::Slider::LinearHorizontal);
-    ptr->setTextBoxStyle(juce::Slider::TextBoxRight,false,54,22);
-    ptr->setTooltip("VCA ratio: 1:1 through 120:1 (continuously adjustable)");
+    ptr->setTextBoxStyle(juce::Slider::TextBoxRight,false,58,22);
+    ptr->setTooltip("VCA ratio 1:1 to 120:1, continuous; double-click resets to 4:1");
     ptr->setDoubleClickReturnValue(true,4.0);
     addAndMakeVisible(*ptr);
     positions.push_back({ptr,{x,y,w,h}});
     sliderBindings.push_back(std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>
                                     (processor.apvts,id,*ptr));
+    // Display the physical ratio instead of a bare number.
+    ptr->textFromValueFunction = [] (double value)
+    {
+        const int rounded=juce::roundToInt(value);
+        return (std::abs(value-(double)rounded)<.049
+                ? juce::String(rounded) : juce::String(value,1)) + ":1";
+    };
+    ptr->valueFromTextFunction = [] (const juce::String& value)
+    {
+        return value.upToFirstOccurrenceOf(":",false,false).getDoubleValue();
+    };
+    ptr->updateText(); // Reformat the initially attached value before first paint.
+    sliders.push_back(std::move(slider));
+    return ptr;
+}
+juce::Slider* ThumpAudioProcessorEditor::addFetRatioSlider (
+    const char* id,float x,float y,float w,float h)
+{
+    auto slider=std::make_unique<juce::Slider>();
+    auto* ptr=slider.get();
+    ptr->setSliderStyle(juce::Slider::LinearHorizontal);
+    ptr->setTextBoxStyle(juce::Slider::TextBoxRight,false,58,22);
+    ptr->setTooltip("FET ratios: 4:1, 8:1, 12:1, 20:1; four discrete positions");
+    ptr->setRange(0.0,3.0,1.0);
+    ptr->setDoubleClickReturnValue(true,0.0);
+    addAndMakeVisible(*ptr);
+    positions.push_back({ptr,{x,y,w,h}});
+    sliderBindings.push_back(std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>
+                                    (processor.apvts,id,*ptr));
+    ptr->textFromValueFunction = [] (double value)
+    {
+        constexpr int choices[4] {4,8,12,20};
+        return juce::String(choices[juce::jlimit(0,3,juce::roundToInt(value))]) + ":1";
+    };
+    ptr->valueFromTextFunction = [] (const juce::String& value)
+    {
+        const int ratio=value.upToFirstOccurrenceOf(":",false,false).getIntValue();
+        if(ratio >= 20) return 3.0;
+        if(ratio >= 12) return 2.0;
+        if(ratio >= 8) return 1.0;
+        return 0.0;
+    };
+    ptr->updateText(); // Show 4:1 / 8:1 / 12:1 / 20:1 immediately.
     sliders.push_back(std::move(slider));
     return ptr;
 }
@@ -368,19 +423,26 @@ juce::Slider* ThumpAudioProcessorEditor::addHorizontal (
     sliders.push_back(std::move(slider));
     return ptr;
 }
-void ThumpAudioProcessorEditor::timerCallback()
+void ThumpAudioProcessorEditor::updateRatioVisibility()
 {
-    const bool lowFet  = processor.apvts.getRawParameterValue("lowMode")->load() < .5f;
-    const bool highFet = processor.apvts.getRawParameterValue("highMode")->load() < .5f;
-    for (auto* slider : {lowFetAttack, lowFetRelease}) if (slider) slider->setEnabled (lowFet);
-    for (auto* slider : {highFetAttack, highFetRelease}) if (slider) slider->setEnabled (highFet);
     for(int b=0;b<2;++b)
     {
-        const int mode=(int)processor.apvts.getRawParameterValue(b==0?"lowMode":"highMode")->load();
-        if(fetRatioMenu[(size_t)b]) fetRatioMenu[(size_t)b]->setVisible(mode==0);
+        const int mode=juce::jlimit(0,2,juce::roundToInt(
+            processor.apvts.getRawParameterValue(b==0?"lowMode":"highMode")->load()));
+        if(fetRatioSlider[(size_t)b]) fetRatioSlider[(size_t)b]->setVisible(mode==0);
         if(vcaRatioSlider[(size_t)b]) vcaRatioSlider[(size_t)b]->setVisible(mode==1);
+        // In Opto mode neither ratio control is visible: fixed 3:1 in DSP.
+        const bool fet=mode==0;
+        auto* attack=b==0?lowFetAttack:highFetAttack;
+        auto* release=b==0?lowFetRelease:highFetRelease;
+        if(attack) attack->setEnabled(fet);
+        if(release) release->setEnabled(fet);
     }
-    for (auto& m : modes) m->repaint();
+}
+void ThumpAudioProcessorEditor::timerCallback()
+{
+    updateRatioVisibility();
+    for(auto& m:modes) m->repaint();
     repaint();
 }
 void ThumpAudioProcessorEditor::resized()
@@ -506,15 +568,28 @@ void ThumpAudioProcessorEditor::paint(juce::Graphics& g)
     minor("HIGH   //   DRIVE",{832,260,148,19});
     minor("HIGH EQ",{986,260,227,19});
     minor("COMPRESSOR",{1232,260,312,19});
-    drawVU(g,{477,351,258,91},"LOW  •  GR",processor.lowReduction.load(),true);
-    drawVU(g,{1258,351,267,91},"HIGH  •  GR",processor.highReduction.load(),true);
+    drawVU(g,{477,351,258,91},"LOW GR",processor.lowReduction.load(),true);
+    drawVU(g,{1258,351,267,91},"HIGH GR",processor.highReduction.load(),true);
+    // A mode-aware label occupies the space LEFT of each ratio track.
+    // The label and slider both disappear for the fixed-ratio opto model.
+    g.setFont(juce::Font(juce::FontOptions(11.5f,juce::Font::bold)));
+    g.setColour(juce::Colour::fromRGB(211,185,130));
+    for (int b=0;b<2;++b)
+    {
+        const auto mode=juce::roundToInt(
+            processor.apvts.getRawParameterValue(b==0?"lowMode":"highMode")->load());
+        if(mode==0 || mode==1)
+            g.drawFittedText(mode==0?"FET RATIO":"VCA RATIO",
+                juce::Rectangle<int>(b==0?463:1239,456,88,22),
+                juce::Justification::centred,1);
+    }
     g.setColour(juce::Colour::fromRGB(85,75,61));
     g.drawLine(799,255,799,754,1.f);
     drawPanel(g,{36,787,1528,128},"",true);
     drawPanel(g,{36,923,1528,109},"",true);
     minor("FINAL LIMITER",{51,792,151,18});
     minor("DYNAMIC BASS EQ / 30 ms ATTACK · 150 ms RELEASE",{949,927,585,18});
-    drawVU(g,{1184,817,338,77},"LIMITER  •  GR",processor.limitReduction.load(),true);
+    drawVU(g,{1184,817,338,77},"LIMITER GR",processor.limitReduction.load(),true);
     for(const auto& tag:tags)
     {
         g.setColour(juce::Colour::fromRGB(204,195,170));
