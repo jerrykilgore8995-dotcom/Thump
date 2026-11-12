@@ -1,0 +1,32 @@
+name: Render Actual THUMP JUCE GUI
+on:
+  push:
+    branches: [thump-gui-snapshot]
+    paths:
+      - 'tests/ThumpGuiShot.cpp'
+      - 'CMakeLists.txt'
+      - '.github/workflows/render-current-gui.yml'
+  workflow_dispatch:
+jobs:
+  render:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure JUCE 8 for Windows
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+      - name: Compile actual GUI renderer
+        run: cmake --build build --config Release --target ThumpGuiShot --parallel 4
+      - name: Render real editor and validate PNG
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem build -Recurse -File -Filter 'ThumpGuiShot.exe' | Where-Object { $_.FullName -match 'Release' } | Select-Object -First 1
+          if (-not $exe) { throw 'ThumpGuiShot not found' }
+          & $exe.FullName
+          if ($LASTEXITCODE -ne 0) { throw "Screenshot render failed: $LASTEXITCODE" }
+          if (-not (Test-Path 'THUMP-v0.6-current-GUI.png')) { throw 'GUI image missing' }
+          if ((Get-Item 'THUMP-v0.6-current-GUI.png').Length -lt 30000) { throw 'PNG suspiciously small' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: THUMP-v0.6-Actual-GUI-Screenshot
+          path: THUMP-v0.6-current-GUI.png
