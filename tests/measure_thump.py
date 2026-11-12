@@ -25,20 +25,20 @@ def setv(alias,value):
         if alias.lower().endswith("mode") or alias.lower().endswith("ratio") or alias.lower().endswith("order"):
             p.value=float(value)
         else: raise RuntimeError(f"Cannot set {alias} ({k})={value}: {e}")
+INITIAL_RAW={k:p.raw_value for k,p in plugin.parameters.items()}
 def apply(overrides):
-    defaults={
-      "Input":0,"Output":0,"Crossover Hz":320,"MONOIZE":0,
-      "Low Saturation":0,"High Tube Style Saturation":0,
-      "Low Compressor":0,"High Compressor":0,
-      "Low Makeup":0,"High Makeup":0,"Low Blend":1,"High Blend":1,
-      "Final Limiter":0,"Limiter Mix":1,
-      "Low EQ Gain":None,"High EQ Gain":None
-    }
-    defaults.pop("Low EQ Gain");defaults.pop("High EQ Gain")
-    # EQ gain labels duplicate! Pedalboard keys generally disambiguate with a suffix.
-    # Discover their exact names in parameter dump below.
-    for name,value in defaults.items():setv(name,value)
+    # Restore EVERY parameter, not only the parameters mentioned by the case.
+    # Otherwise EQ/threshold/limiter state leaks from one sweep into the next.
+    for key_name,raw in INITIAL_RAW.items():
+        plugin.parameters[key_name].raw_value=raw
+    for name in ("Low Saturation","High Tube Style Saturation","Low Compressor",
+                 "High Compressor","Final Limiter","MONOIZE"):
+        setv(name,0)
+    for name,value in (("Low Makeup",0),("High Makeup",0),
+                       ("Low Blend",1),("High Blend",1)):
+        setv(name,value)
     for name,value in overrides.items():setv(name,value)
+
 def process(x,params):
     apply(params)
     return np.asarray(plugin.process(x.astype("float32"),sample_rate=SR,reset=True),dtype=np.float64)
@@ -102,6 +102,14 @@ with open(OUT/"frequency_phase.csv","w",newline="") as f:
         gain=next((k for k in matches if "gain" in key(k) or key(k).endswith("g")),None)
         width=next((k for k in matches if "q" in key(k) or "width" in key(k)),None)
         if gain and width:eq_labels[stem]=(gain,width)
+    # Fallback when the VST3 host exposes duplicate human-readable EQ names.
+    kinds=[("low",["low40","low120","low220"],"Low EQ Gain","Low Shelf Width"),
+           ("high",["high1500","high5000"],"High EQ Gain","High Proportional Q")]
+    for _,stems,glabel,qlabel in kinds:
+        gnames=[k for k,p in plugin.parameters.items() if key(getattr(p,"name",k))==key(glabel)]
+        qnames=[k for k,p in plugin.parameters.items() if key(getattr(p,"name",k)).startswith(key(qlabel))]
+        if len(gnames)>=len(stems) and len(qnames)>=len(stems):
+            for idx,stem in enumerate(stems):eq_labels.setdefault(stem,(gnames[idx],qnames[idx]))
     print("EQ BINDINGS:",eq_labels)
     for stem,(gname,qname) in eq_labels.items():
         for gain in [-12,-9,-6,-3,0,3,6,9,12]:
