@@ -2,9 +2,9 @@
 from pathlib import Path
 import math
 ROOT=Path(__file__).resolve().parents[1]
-cpp=(ROOT/'Source/PluginProcessor.cpp').read_text()
-head=(ROOT/'Source/PluginProcessor.h').read_text()
-gui=(ROOT/'Source/PluginEditor.cpp').read_text()
+cpp=(ROOT/'Source/PluginProcessor.cpp').read_text(encoding='utf-8')
+head=(ROOT/'Source/PluginProcessor.h').read_text(encoding='utf-8')
+gui=(ROOT/'Source/PluginEditor.cpp').read_text(encoding='utf-8')
 
 def thd_and_k2(y,fs,hz):
     n=len(y)

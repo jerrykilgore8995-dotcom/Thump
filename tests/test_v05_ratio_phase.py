@@ -3,9 +3,9 @@ from pathlib import Path
 import math
 import re
 root=Path(__file__).resolve().parents[1]
-s=(root/'Source/PluginProcessor.cpp').read_text()
-h=(root/'Source/PluginProcessor.h').read_text()
-layout=(root/'Source/PluginEditor.cpp').read_text()
+s=(root/'Source/PluginProcessor.cpp').read_text(encoding='utf-8')
+h=(root/'Source/PluginProcessor.h').read_text(encoding='utf-8')
+layout=(root/'Source/PluginEditor.cpp').read_text(encoding='utf-8')
 
 routes=['EQ > Drive > Comp','EQ > Comp > Drive','Drive > EQ > Comp',
         'Drive > Comp > EQ','Comp > EQ > Drive','Comp > Drive > EQ']

@@ -9,9 +9,9 @@ import math
 from pathlib import Path
 
 P = Path(__file__).resolve().parents[1]
-SOURCE = (P/'Source/PluginProcessor.cpp').read_text()
-HEADER = (P/'Source/PluginProcessor.h').read_text()
-EDITOR = (P/'Source/PluginEditor.cpp').read_text()
+SOURCE = (P/'Source/PluginProcessor.cpp').read_text(encoding='utf-8')
+HEADER = (P/'Source/PluginProcessor.h').read_text(encoding='utf-8')
+EDITOR = (P/'Source/PluginEditor.cpp').read_text(encoding='utf-8')
 
 
 def shelf(freq, gain, user_q, fs):

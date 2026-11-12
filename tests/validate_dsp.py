@@ -6,9 +6,9 @@ from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
-CPP = (ROOT / 'Source' / 'PluginProcessor.cpp').read_text()
-HEADER = (ROOT / 'Source' / 'PluginProcessor.h').read_text()
-EDITOR = (ROOT / 'Source' / 'PluginEditor.cpp').read_text()
+CPP = (ROOT / 'Source' / 'PluginProcessor.cpp').read_text(encoding='utf-8')
+HEADER = (ROOT / 'Source' / 'PluginProcessor.h').read_text(encoding='utf-8')
+EDITOR = (ROOT / 'Source' / 'PluginEditor.cpp').read_text(encoding='utf-8')
 
 
 def butterworth(fs, hz, high=False):
