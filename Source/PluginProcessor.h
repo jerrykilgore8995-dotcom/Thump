@@ -156,6 +156,7 @@ private:
     thump::State smoothedFilters;
     std::array<float, 201> vcaAttackLookup {};
     float optoAttackCoeff = 0.f, bypassCoeff = 0.f, colorDcCoeff = 0.f;
+    float rmsVcaCoeff = 0.f, rmsOptoCoeff = 0.f;
     float hostGainSmoothCoeff = 0.f, parameterSmoothCoeff = 0.f;
     double processingSampleRate = 176400;
     float wetMatchCoeff = 0.00016f;
