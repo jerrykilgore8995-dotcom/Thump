@@ -241,6 +241,8 @@ void ThumpAudioProcessor::prepareToPlay (double fs, int maxBlock)
     parameterSmoothCoeff = 1.f - std::exp (-1.f/(.010f*(float)processingSampleRate));
     bypassCoeff = std::exp (-1.f/(.008f*(float)processingSampleRate));
     optoAttackCoeff = std::exp (-1000.f/(20.f*(float)processingSampleRate));
+    rmsVcaCoeff = std::exp(-1.f/(.003f*(float)processingSampleRate));
+    rmsOptoCoeff = std::exp(-1.f/(.007f*(float)processingSampleRate));
     colorDcCoeff = std::exp (-2.f*thump::pi*14.f/(float)processingSampleRate);
     for (int idx=0; idx<=200; ++idx)
     {
@@ -476,7 +478,7 @@ void ThumpAudioProcessor::runCompressor (float& l, float& r, thump::Detector& d,
     if (mode != 0)
     {
         // RMS-like detection on VCA / OPTO (unlike the FET peak sidechain).
-        const float c = std::exp (-1.0f / ((mode == 1 ? .003f : .007f) * fs));
+        const float c = mode == 1 ? rmsVcaCoeff : rmsOptoCoeff;
         d.rms2 = c * d.rms2 + (1.0f - c) * peak * peak;
         level = std::sqrt (juce::jmax (d.rms2, 0.0f));
     }
