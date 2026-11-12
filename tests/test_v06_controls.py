@@ -40,7 +40,7 @@ labels = []
 def add(kind,name,x,y,w,h):
     controls.append((kind,name,float(x),float(y),float(w),float(h)))
 def label(name,x,y,w,h):
-    labels.append((name,float(x),float(y),float(w),float(h)))
+    labels.append(("label",name,float(x),float(y),float(w),float(h)))
 
 for m in re.finditer(r'addKnob\("([^"]+)","[^"]+",([\d.]+),([\d.]+),([\d.]+)\)', intro):
     name,cx,cy,d = m.groups();cx=float(cx);cy=float(cy);d=float(d)
