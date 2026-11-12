@@ -150,6 +150,8 @@ private:
     float dynamicRms2 = 0.f, dynamicCutDb = 0.f;
     int dynamicCounter = 0;
     float smoothInputGain = 1.f, smoothOutputGain = 1.f;
+    float smoothLowDrive = 2.8f, smoothHighDrive = 3.8f;
+    float smoothLowSatMix = .18f, smoothHighSatMix = .38f;
     bool filterInitialized = false;
     thump::State smoothedFilters;
     std::array<float, 201> vcaAttackLookup {};
