@@ -11,7 +11,7 @@
 - **Compressor coloration:** Additive, independent, gain-reduction-scaled K2–K5 residuals. Opto uses user-supplied dBc targets listed below; FET mildly colors low frequencies with both even and odd harmonics; VCA offers deliberately *enhanced dbx-style* color (~1–2% K3 source coefficient at 20 dB reduction in the low band), **not** the much cleaner THAT 2181A/B/C chip specification. Each model generates no color when its gain reduction is zero; bypassed compressors do not add color after their bypass crossfade.
 - **4× shared oversampling:** Entire signal chain runs at four times host sample rate with JUCE's polyphase anti-aliasing filters; this reduces aliasing, but **4× cannot eliminate foldback at arbitrarily high harmonics**. The high drive also uses a 5.2 kHz post-clip low-pass filter. Real input/headroom tests remain essential.
 - **Low-only MONOIZE:** Averages the low branch L/R after the common Linkwitz–Riley split, before processing; high frequencies retain their stereo positions. The post-split low/high blend remains a sample-aligned linear sum. No separately delayed parallel crossovers or mix-mode comb filters.
-- **Final limiter:** Keeps stereo-linked 1 ms lookahead, gentle glue compression, selectable ceiling and wet/dry. Its ceiling applies to the wet limiting path; when Limiter Mix is below 100%, or downstream Output gain is added, peaks can still exceed the indicated ceiling. This is not yet certified true-peak limiting.
+- **Final limiter:** Keeps stereo-linked 1 ms lookahead, gentle glue compression, selectable ceiling and wet/dry. Its ceiling applies to the wet limiting path; when Limiter Mix is below 100% or the limiter is bypassed, peaks can still exceed the indicated ceiling. Global Output gain now precedes the limiter. This is not yet certified true-peak limiting.
 
 ## Channel layout
 
@@ -29,9 +29,11 @@ Input -> shared stereo 4x oversampling -> LR4 crossover (120–800 Hz)
                                   LOW BLEND      HIGH BLEND
                                      +----------------+
                                               |
-                                stereo-linked glue + lookahead limiter
+                                          OUTPUT gain
                                               |
-                                       downsample -> OUTPUT
+                               stereo-linked glue + lookahead limiter
+                                              |
+                                          downsample
 ```
 
 **EQ note:** Low EQ is a documented *1073/1084 family approximation* (broad shelves and small response divots); high EQ uses *550 family proportional-Q behavior*. No physical-unit frequency-response grid is embedded; do not claim sample-identical hardware EQ curves.

@@ -498,6 +498,9 @@ void ThumpAudioProcessor::processBlock (juce::AudioBuffer<float>& audio, juce::M
     const auto s = readParams();
     updateFilters (s);
     const float pre = thump::dbToGain (s.inputDb);
+    // The global OUT control acts on the fully merged signal BEFORE the final
+    // limiter, so final limiting can catch post-blend gain increases as well.
+    const float post = thump::dbToGain (s.outputDb);
     for (int i=0; i<n; ++i)
     {
         const float l = audio.getSample (0,i);
@@ -553,8 +556,8 @@ void ThumpAudioProcessor::processBlock (juce::AudioBuffer<float>& audio, juce::M
                               s.highThresh,s.highAttackMs,s.highReleaseMs,s.highMakeupDb,
                               s.highFetRatio,s.highVcaRatio);
         }
-        left[i] = lo[0]*s.lowMix + hi[0]*s.highMix;
-        right[i] = lo[1]*s.lowMix + hi[1]*s.highMix;
+        left[i] = (lo[0]*s.lowMix + hi[0]*s.highMix) * post;
+        right[i] = (lo[1]*s.lowMix + hi[1]*s.highMix) * post;
     }
     const float ceiling = thump::dbToGain (s.limiterCeilingDb);
     const float limiterIn = thump::dbToGain (s.limiterInputDb);
@@ -601,13 +604,12 @@ void ThumpAudioProcessor::processBlock (juce::AudioBuffer<float>& audio, juce::M
 
     }
     oversampling.processSamplesDown (work);
-    const float post = thump::dbToGain (s.outputDb);
     for (int ch=0; ch<nc; ++ch)
     {
         auto* d = audio.getWritePointer(ch);
         const auto* src = stereoWork.getReadPointer(ch);
         for (int i=0; i<n; ++i)
-        { d[i] = src[i] * post; }
+        { d[i] = src[i]; }
     }
     for (int ch=nc; ch<audio.getNumChannels(); ++ch) audio.clear(ch,0,n);
     lowReduction.store (lowDetector.grDb);
