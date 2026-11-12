@@ -54,3 +54,13 @@ target_compile_definitions(ThumpSmoke PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0)
 target_link_libraries(ThumpSmoke PRIVATE juce::juce_audio_utils juce::juce_dsp
     juce::juce_recommended_config_flags juce::juce_recommended_lto_flags)
+
+# Offscreen PNG of actual 1600x1050 THUMP editor, no UI imitation.
+juce_add_console_app(ThumpGuiShot PRODUCT_NAME "THUMP GUI Screenshot")
+target_sources(ThumpGuiShot PRIVATE
+    tests/ThumpGuiShot.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp)
+target_include_directories(ThumpGuiShot PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(ThumpGuiShot PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
+    JUCE_VST3_CAN_REPLACE_VST2=0)
+target_link_libraries(ThumpGuiShot PRIVATE juce::juce_audio_utils juce::juce_dsp
+    juce::juce_recommended_config_flags juce::juce_recommended_lto_flags)
