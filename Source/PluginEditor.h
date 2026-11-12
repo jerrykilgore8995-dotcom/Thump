@@ -66,6 +66,8 @@ private:
     juce::ComboBox* addChoice (const char* id, const juce::StringArray& options,
                               float x, float y, float w, float h);
     juce::Slider* addRatioSlider (const char* id,float x,float y,float w,float h);
+    juce::Slider* addHorizontal (const char* id, const char* label,
+                                 float x,float y,float w,float h,float resetValue);
     void addTag (juce::String text, float x, float y, float w, float h=18, float size=13);
     void timerCallback() override;
     void drawPanel (juce::Graphics&, juce::Rectangle<float>, const juce::String&, bool gold=false);

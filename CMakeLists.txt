@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(Thump VERSION 0.5.0 LANGUAGES C CXX)
+project(Thump VERSION 0.6.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -43,4 +43,14 @@ target_include_directories(ThumpBench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(ThumpBench PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0)
 target_link_libraries(ThumpBench PRIVATE juce::juce_audio_utils juce::juce_dsp
+    juce::juce_recommended_config_flags juce::juce_recommended_lto_flags)
+
+# Fast signal-path regression executable runs the exact JUCE processor.
+juce_add_console_app(ThumpSmoke PRODUCT_NAME "THUMP DSP Smoke")
+target_sources(ThumpSmoke PRIVATE
+    tests/ThumpSmoke.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp)
+target_include_directories(ThumpSmoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(ThumpSmoke PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
+    JUCE_VST3_CAN_REPLACE_VST2=0)
+target_link_libraries(ThumpSmoke PRIVATE juce::juce_audio_utils juce::juce_dsp
     juce::juce_recommended_config_flags juce::juce_recommended_lto_flags)

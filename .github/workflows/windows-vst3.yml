@@ -2,7 +2,7 @@ name: THUMP Windows VST3
 on:
   workflow_dispatch:
   push:
-    branches: [main, thump-development]
+    branches: [main, thump-development, thump-v0.6-metal-bass-upgrades]
     paths:
       - 'Source/**'
       - 'CMakeLists.txt'
@@ -24,18 +24,29 @@ jobs:
         run: python tests/test_thump_v04.py
       - name: Validate v0.5 routing, color and ratio maths
         run: python tests/test_v05_ratio_phase.py
+      - name: Validate v0.6 metal bass controls and layout
+        run: python tests/test_v06_controls.py
       - name: Configure VS2022 x64 + JUCE 8
         run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
       - name: Build VST3 Release
         run: cmake --build build --config Release --target Thump_VST3 --parallel 4
+      - name: Build real-processor signal-flow smoke test
+        run: cmake --build build --config Release --target ThumpSmoke --parallel 4
+      - name: Exercise THUMP v0.6 DSP at 44.1 kHz
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem build -Recurse -File -Filter 'ThumpSmoke.exe' | Where-Object { $_.FullName -match 'Release' } | Select-Object -First 1
+          if (-not $exe) { throw 'ThumpSmoke.exe not found' }
+          & $exe.FullName
+          if ($LASTEXITCODE -ne 0) { throw "THUMP smoke test failed: $LASTEXITCODE" }
       - name: Package VST3
         shell: pwsh
         run: |
           $plugin = Get-ChildItem -Path build -Recurse -Directory -Filter 'THUMP.vst3' | Select-Object -First 1
           if (-not $plugin) { throw 'THUMP.vst3 bundle not found' }
-          Compress-Archive -LiteralPath $plugin.FullName -DestinationPath THUMP_0.5.0_Windows_x64_VST3.zip -Force
+          Compress-Archive -LiteralPath $plugin.FullName -DestinationPath THUMP_0.6.0_Windows_x64_VST3.zip -Force
       - name: Upload ZIP artifact
         uses: actions/upload-artifact@v4
         with:
           name: THUMP-Windows-x64-VST3
-          path: THUMP_0.5.0_Windows_x64_VST3.zip
+          path: THUMP_0.6.0_Windows_x64_VST3.zip

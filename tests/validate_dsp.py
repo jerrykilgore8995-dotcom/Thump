@@ -65,7 +65,7 @@ def check():
         assert abs(response-(1-1/math.e)) < 0.001
     assert abs(10/120 - 1/12) < 1e-12
     assert '120.0f / fs' in CPP
-    assert '20.0f * fs' in CPP  # opto release cap
+    assert 'fs * 2.0f' in CPP  # opto release cap (seconds converted to samples)
 
     # User-design opto curve: 50% at 100ms, all remaining gain back by 2000ms.
     assert math.isclose(opto_fraction(0),1,abs_tol=1e-12)

@@ -1,6 +1,19 @@
-# THUMP v0.5.0 — JUCE 8 analog-style dual-band bass processor
+# THUMP v0.6.0 — JUCE 8 analog-style dual-band bass processor
 
 **Source prototype:** JUCE/C++17 VST3 and standalone app, black + satin gold rack GUI, eight original rock/metal factory presets. Windows x64 build supplied through GitHub Actions. For Studio One / REAPER at 44.1 or 48 kHz.
+
+## What's new in 0.6 (rock/metal bass controls)
+
+- **Independent low/high drive level matching:** separate 35ms RMS histories for each band and each channel fix the previous cross-band interaction. Drive changes and bypass transitions are smoothed.
+- **Sweepable high mid bell:** a new 350–1500 Hz high-band EQ with gain ±12 dB and Q 0.3–3, in addition to the existing 1.5k and 5k controls. The high EQ has three bands, not two.
+- **Three selectable high drive characters:** TS Grind (original 720 Hz pre-emphasis and symmetric clipping), Amp Grind (350 Hz high pass, asymmetrically biased soft saturation and 6.8 kHz post-filter), and Fuzz Clank (harder symmetric saturation with 250 Hz prefilter and 4.5 kHz postfilter). Selector changes are smoothly crossfaded.
+- **Pre-split high-pass:** optional OFF / 12 dB/oct / 24 dB/oct at 20–45 Hz, with 10ms slope transitions. Both output bands see the same pre-split signal to preserve crossover alignment.
+- **Dynamic bass EQ:** optional stereo-linked wide-bell reduction from 70–140 Hz, adjustable threshold -45 to -6 dBFS and max cut 0–8 dB; 20ms RMS detection, 30ms gain attack and 150ms release. Coefficients update once per 64 oversampled frames.
+- **Independent limiter glue switch:** the original 1.4:1 glue envelope can be bypassed while leaving the 1ms lookahead peak catcher active. The fully wet limiter has a final stereo-linked sample-peak ceiling guard both before and after downsampling. **Not true-peak certified; partial wet/dry still need not respect the ceiling.**
+- **DSP/GUI refinement:** cached FET, VCA and opto attack envelopes; precomputed VCA attack lookup; smoothed global input/output, drive and EQ edits; v0.6 independent layout regression checks. Faceplate grows vertically for a separate dynamic bass row; control rectangles and labels are checked for collisions.
+- Existing v0.5 factory preset parameter IDs are unchanged; new controls reset to neutral factory defaults. Session state remains APVTS serialized.
+
+**Validation:** CI compiles a Windows JUCE VST3, and checks static layout plus math; this is not a listening test or a verified true-peak/analog-hardware measurement. Reference and step testing in REAPER remains advisable.
 
 ## What's new in 0.5
 
@@ -68,6 +81,7 @@ python tests/test_eq_curves.py
 python tests/test_drive_and_gui.py
 python tests/test_thump_v04.py
 python tests/test_v05_ratio_phase.py
+python tests/test_v06_controls.py
 ```
 
 These are mathematical regressions, not a compiled-plugin listening test. **A passing CI build only establishes successful compilation and the supplied tests, not hardware emulation fidelity**. Test THD sweeps, stereo phase, high-frequency aliasing, compressor ratios at settled levels, and peak ceiling in REAPER/Plugin Doctor after installing.
