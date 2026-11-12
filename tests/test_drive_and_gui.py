@@ -56,7 +56,7 @@ for id in ('lowRoute','highRoute','lowFetRatio','highFetRatio','lowVcaRatio','hi
 assert 'if(s.mono) lo[0]=lo[1]=' in cpp
 assert 'if (s.mono) left[i]' not in cpp
 assert '"LOW GR"' in gui and '"HIGH GR"' in gui
-assert '"LIMITER  •  GR"' in gui
+assert '"LIMITER GR"' in gui
 assert '"LOW MONO ONLY"' in gui
 print('PASS: low/high drive increase to >=20% pre-filter THD at max for -15dBFS input')
 print('PASS: symmetrical high, asymmetric low, no dry/wet residual-cancellation')
